@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Estilos CSS ────────────────────────────────────────────────────────────────
+# ── Estilos CSS Atualizados ───────────────────────────────────────────────────
 st.markdown("""
 <style>
     .main-header {
@@ -32,11 +32,17 @@ st.markdown("""
     }
     .card {
         background: white; border: 1px solid #e2e8f0;
-        border-radius: 10px; padding: 1rem 1.5rem;
-        text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+        border-radius: 12px; padding: 1.25rem 1.5rem;
+        text-align: center; 
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+        transition: transform 0.2s, box-shadow 0.2s;
     }
-    .card-label { font-size: 0.8rem; color: #64748b; margin-bottom: 4px; }
-    .card-value { font-size: 1.4rem; font-weight: 700; }
+    .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.03);
+    }
+    .card-label { font-size: 0.85rem; color: #64748b; margin-bottom: 6px; font-weight: 500; }
+    .card-value { font-size: 1.5rem; font-weight: 700; }
     .green  { color: #16a34a; }
     .red    { color: #dc2626; }
     .blue   { color: #2563eb; }
@@ -83,9 +89,6 @@ def add_months(dt: date, months: int) -> date:
 def hoje_str():
     return date.today().strftime("%Y-%m-%d")
 
-def mes_atual():
-    return date.today().strftime("%Y-%m")
-
 def card_html(label, value, color_class):
     return f"""
     <div class="card">
@@ -93,6 +96,17 @@ def card_html(label, value, color_class):
         <div class="card-value {color_class}">{value}</div>
     </div>
     """
+
+def seletor_mes_ano(key_prefix: str):
+    """Renderiza seletores de ano e mês lado a lado de forma amigável."""
+    hoje = date.today()
+    anos = [hoje.year - i for i in range(5)]
+    c1, c2 = st.columns(2)
+    ano = c1.selectbox("Ano", anos, index=0, key=f"{key_prefix}_ano")
+    mes = c2.selectbox("Mês", list(MESES_PT.keys()), 
+                       format_func=lambda x: MESES_PT[x], 
+                       index=hoje.month - 1, key=f"{key_prefix}_mes")
+    return f"{ano}-{mes:02d}"
 
 # ── Google Sheets ──────────────────────────────────────────────────────────────
 SCOPES = [
@@ -118,7 +132,6 @@ def get_sheet(name: str):
         return wb.worksheet(name)
     except gspread.WorksheetNotFound:
         ws = wb.add_worksheet(title=name, rows=1000, cols=20)
-        # Cabeçalhos por aba
         headers = {
             "despesas": ["id", "descricao", "valor", "data", "local",
                          "pagamento", "categoria", "cartao", "n_parcelas",
@@ -140,7 +153,9 @@ def next_id(ws) -> int:
     df = sheet_to_df(ws)
     if df.empty or "id" not in df.columns or df["id"].astype(str).str.strip().eq("").all():
         return 1
-    return int(df["id"].max()) + 1
+    # Conversão numérica robusta para evitar ordenação alfabética errada
+    ids = pd.to_numeric(df["id"], errors='coerce').fillna(0).astype(int)
+    return int(ids.max()) + 1
 
 # ── Lógica de dados ────────────────────────────────────────────────────────────
 def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc, obs):
@@ -174,13 +189,11 @@ def salvar_receita(desc, valor, data, cat, obs):
 def excluir_despesa(did: int):
     ws_d = get_sheet("despesas")
     ws_p = get_sheet("parcelas")
-    # Excluir parcelas
     df_p = sheet_to_df(ws_p)
     if not df_p.empty and "despesa_id" in df_p.columns:
         ids_excluir = df_p[df_p["despesa_id"].astype(str) == str(did)].index.tolist()
         for idx in sorted(ids_excluir, reverse=True):
             ws_p.delete_rows(idx + 2)
-    # Excluir despesa
     df_d = sheet_to_df(ws_d)
     if not df_d.empty:
         idx_list = df_d[df_d["id"].astype(str) == str(did)].index.tolist()
@@ -206,6 +219,7 @@ def atualizar_parcela(pid: int, status: str):
     st.cache_data.clear()
 
 def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
+    """Marca todas as parcelas pendentes da fatura do mês como pagas em lote."""
     ws = get_sheet("parcelas")
     ws_d = get_sheet("despesas")
     df_p = sheet_to_df(ws)
@@ -218,8 +232,20 @@ def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
         ids_cartao = df_d[df_d["cartao"] == cartao_filtro]["id"].astype(str).tolist()
         mask = mask & df_p["despesa_id"].astype(str).isin(ids_cartao)
     idxs = df_p[mask].index.tolist()
+    
+    if not idxs:
+        return 0
+
+    # MELHORIA DE PERFORMANCE: Atualização em lote (Batch Update) das células
+    col_idx = df_p.columns.get_loc("status") + 1
+    range_data = []
     for idx in idxs:
-        ws.update_cell(idx + 2, df_p.columns.get_loc("status") + 1, "pago")
+        row_num = idx + 2
+        range_data.append({
+            'range': f'{gspread.utils.rowcol_to_a1(row_num, col_idx)}',
+            'values': [['pago']]
+        })
+    ws.batch_update(range_data)
     st.cache_data.clear()
     return len(idxs)
 
@@ -258,10 +284,17 @@ tab_dash, tab_lanc, tab_rec, tab_lista, tab_cc, tab_cc_rec = st.tabs([
 # DASHBOARD
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_dash:
-    mes_dash = st.text_input("Mês (AAAA-MM)", value=mes_atual(), key="mes_dash")
+    st.markdown("##### Filtro de Período")
+    mes_dash = seletor_mes_ano("dash")
 
     df_d = carregar_despesas()
     df_r = carregar_receitas()
+
+    # Garantir conversões corretas
+    if not df_d.empty and "valor" in df_d.columns:
+        df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
+    if not df_r.empty and "valor" in df_r.columns:
+        df_r["valor"] = pd.to_numeric(df_r["valor"], errors='coerce').fillna(0.0)
 
     # Filtrar pelo mês
     desp_mes = df_d[df_d["data"].astype(str).str.startswith(mes_dash)] if not df_d.empty else pd.DataFrame()
@@ -296,34 +329,39 @@ with tab_dash:
             hist.append({"Mês": lbl, "Receita": r_val, "Despesa": e_val})
         df_hist = pd.DataFrame(hist)
         fig1 = go.Figure()
-        fig1.add_bar(x=df_hist["Mês"], y=df_hist["Receita"], name="Receita", marker_color="#16a34a")
-        fig1.add_bar(x=df_hist["Mês"], y=df_hist["Despesa"], name="Despesa", marker_color="#dc2626")
-        fig1.update_layout(barmode="group", height=300, margin=dict(t=10, b=10, l=10, r=10),
+        fig1.add_bar(x=df_hist["Mês"], y=df_hist["Receita"], name="Receita", marker_color="#16a34a",
+                     hovertemplate='Receita: R$ %{y:,.2f}<extra></extra>')
+        fig1.add_bar(x=df_hist["Mês"], y=df_hist["Despesa"], name="Despesa", marker_color="#dc2626",
+                     hovertemplate='Despesa: R$ %{y:,.2f}<extra></extra>')
+        fig1.update_layout(barmode="group", height=300, template="plotly_white", separators=',.',
+                           margin=dict(t=10, b=10, l=10, r=10),
                            legend=dict(orientation="h", y=-0.2))
         st.plotly_chart(fig1, use_container_width=True)
 
-    # ── Pizza categorias despesa ──
+    # ── Pizza categorias despesa (Estilo Donut) ──
     with col2:
         st.subheader("Despesas por categoria")
         if not desp_mes.empty and "categoria" in desp_mes.columns:
             grp = desp_mes.groupby("categoria")["valor"].sum().reset_index()
             grp.columns = ["Categoria", "Valor"]
-            fig2 = px.pie(grp, values="Valor", names="Categoria", height=300,
+            fig2 = px.pie(grp, values="Valor", names="Categoria", hole=0.4, height=300,
                           color_discrete_sequence=px.colors.qualitative.Set2)
-            fig2.update_layout(margin=dict(t=10, b=10, l=10, r=10))
+            fig2.update_traces(textinfo='percent+label', hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>')
+            fig2.update_layout(template="plotly_white", separators=',.', margin=dict(t=10, b=10, l=10, r=10))
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Sem dados para o período.")
 
-    # ── Pizza pagamento ──
+    # ── Pizza pagamento (Estilo Donut) ──
     with col3:
         st.subheader("Por pagamento")
         if not desp_mes.empty and "pagamento" in desp_mes.columns:
             grp2 = desp_mes.groupby("pagamento")["valor"].sum().reset_index()
             grp2.columns = ["Pagamento", "Valor"]
-            fig3 = px.pie(grp2, values="Valor", names="Pagamento", height=300,
+            fig3 = px.pie(grp2, values="Valor", names="Pagamento", hole=0.4, height=300,
                           color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig3.update_layout(margin=dict(t=10, b=10, l=10, r=10))
+            fig3.update_traces(textinfo='percent+label', hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>')
+            fig3.update_layout(template="plotly_white", separators=',.', margin=dict(t=10, b=10, l=10, r=10))
             st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Sem dados para o período.")
@@ -361,7 +399,7 @@ with tab_lanc:
         erros = []
         if not desc.strip(): erros.append("Preencha a descrição.")
         try:
-            v = float(valor.replace(",", "."))
+            v = float(valor.replace(".", "").replace(",", "."))
             assert v > 0
         except Exception:
             erros.append("Valor inválido.")
@@ -395,7 +433,7 @@ with tab_rec:
         erros = []
         if not rdesc.strip(): erros.append("Preencha a descrição.")
         try:
-            rv = float(rvalor.replace(",", "."))
+            rv = float(rvalor.replace(".", "").replace(",", "."))
             assert rv > 0
         except Exception:
             erros.append("Valor inválido.")
@@ -411,15 +449,22 @@ with tab_rec:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_lista:
     st.subheader("Despesas")
-    f1, f2, f3 = st.columns(3)
-    fmes  = f1.text_input("Mês (AAAA-MM)", value=mes_atual(), key="fmes_lista")
-    fpag  = f2.selectbox("Pagamento", ["Todos"] + PAGAMENTOS, key="fpag_lista")
-    fcat  = f3.selectbox("Categoria", ["Todas"] + CAT_DESP,  key="fcat_lista")
+    
+    # Filtro visual usando os dropdowns de Mês e Ano
+    st.markdown("##### Filtros de visualização")
+    fmes = seletor_mes_ano("lista")
+    
+    f1, f2 = st.columns(2)
+    fpag  = f1.selectbox("Pagamento", ["Todos"] + PAGAMENTOS, key="fpag_lista")
+    fcat  = f2.selectbox("Categoria", ["Todas"] + CAT_DESP,  key="fcat_lista")
 
     df_d = carregar_despesas()
     if df_d.empty:
         st.info("Nenhuma despesa cadastrada.")
     else:
+        # Forçar conversão antes de somar
+        df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
+        
         mask = df_d["data"].astype(str).str.startswith(fmes)
         if fpag != "Todos": mask &= df_d["pagamento"] == fpag
         if fcat != "Todas": mask &= df_d["categoria"] == fcat
@@ -439,14 +484,31 @@ with tab_lista:
             df_show["valor"] = df_show["valor"].apply(fmt_moeda)
             df_show.columns = ["ID", "Descrição", "Valor", "Data", "Local",
                                 "Pagamento", "Categoria", "Parcelas", "Obs"]
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
+            
+            # MELHORIA DE USABILIDADE: Habilita seleção direta por linha
+            event_d = st.dataframe(
+                df_show, 
+                use_container_width=True, 
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="single-row"
+            )
 
-            st.markdown("#### Excluir despesa")
-            id_excluir = st.number_input("ID da despesa para excluir", min_value=1, step=1, key="id_excluir_d")
-            if st.button("🗑 Excluir despesa", type="secondary", key="btn_excluir_d"):
-                excluir_despesa(int(id_excluir))
-                st.success(f"Despesa #{id_excluir} excluída!")
-                st.rerun()
+            st.markdown("#### Ações")
+            selected_rows_d = event_d.selection.rows
+            if selected_rows_d:
+                idx_sel = selected_rows_d[0]
+                id_excluir = int(df_filtrado.iloc[idx_sel]["id"])
+                desc_excluir = df_filtrado.iloc[idx_sel]["descricao"]
+                val_excluir = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])
+                
+                st.warning(f"⚠️ Despesa selecionada: **#{id_excluir} - {desc_excluir} ({val_excluir})**")
+                if st.button("🗑 Excluir despesa selecionada", type="primary", use_container_width=True):
+                    excluir_despesa(id_excluir)
+                    st.success(f"Despesa #{id_excluir} excluída com sucesso!")
+                    st.rerun()
+            else:
+                st.info("💡 Clique em uma linha na tabela acima para liberar as ações de exclusão.")
         else:
             st.info("Nenhuma despesa no período selecionado.")
 
@@ -465,9 +527,11 @@ with tab_cc:
     if df_p.empty:
         st.info("Nenhuma parcela cadastrada.")
     else:
+        # Forçar conversão
+        df_p["valor"] = pd.to_numeric(df_p["valor"], errors='coerce').fillna(0.0)
+        
         hoje = hoje_str()
         df_p2 = df_p.copy()
-        # Adicionar nome e cartão via join
         if not df_d.empty:
             df_p2 = df_p2.merge(
                 df_d[["id", "descricao", "cartao"]].rename(columns={"id": "despesa_id"}),
@@ -496,6 +560,7 @@ with tab_cc:
         st.markdown("<br>", unsafe_allow_html=True)
 
         if not df_p2.empty:
+            # MELHORIA VISUAL: Emoticons/Badges na coluna Status da tabela
             def status_label(row):
                 if row["status"] == "pago": return "✅ Pago"
                 if str(row["vencimento"]) < hoje: return "❌ Vencido"
@@ -509,25 +574,52 @@ with tab_cc:
             df_show.rename(columns={"id": "ID", "descricao": "Despesa", "cartao": "Cartão",
                                      "numero": "Parc.", "total": "Total", "valor": "Valor",
                                      "vencimento": "Vencimento"}, inplace=True)
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
+            
+            # MELHORIA DE USABILIDADE: Seleção interativa na tabela
+            event_p = st.dataframe(
+                df_show, 
+                use_container_width=True, 
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="single-row"
+            )
 
-            st.markdown("#### Ações")
-            ba1, ba2, ba3 = st.columns(3)
-            pid_acao = ba1.number_input("ID da parcela", min_value=1, step=1, key="pid_acao")
-            if ba2.button("✔ Dar baixa", type="primary"):
-                atualizar_parcela(int(pid_acao), "pago")
-                st.success(f"Parcela #{pid_acao} marcada como paga!")
-                st.rerun()
-            if ba3.button("↩ Estornar"):
-                atualizar_parcela(int(pid_acao), "pendente")
-                st.warning(f"Parcela #{pid_acao} estornada para pendente.")
-                st.rerun()
+            st.markdown("#### Ações da Parcela")
+            selected_rows_p = event_p.selection.rows
+            if selected_rows_p:
+                idx_sel = selected_rows_p[0]
+                pid_acao = int(df_p2.iloc[idx_sel]["id"])
+                desc_p = df_p2.iloc[idx_sel]["descricao"]
+                val_p = fmt_moeda(df_p2.iloc[idx_sel]["valor"])
+                status_p = df_p2.iloc[idx_sel]["status"]
+                
+                st.info(f"📋 Parcela selecionada: **#{pid_acao} - {desc_p} ({val_p})** | Status: **{status_p.upper()}**")
+                
+                ba2, ba3 = st.columns(2)
+                if ba2.button("✔ Dar baixa (Marcar como Pago)", type="primary", use_container_width=True):
+                    atualizar_parcela(pid_acao, "pago")
+                    st.success(f"Parcela #{pid_acao} marcada como paga!")
+                    st.rerun()
+                if ba3.button("↩ Estornar (Voltar para Pendente)", use_container_width=True):
+                    atualizar_parcela(pid_acao, "pendente")
+                    st.warning(f"Parcela #{pid_acao} estornada para pendente.")
+                    st.rerun()
+            else:
+                st.info("💡 Clique em uma parcela na tabela acima para liberar as ações de pagamento/estorno.")
 
             st.markdown("---")
-            mes_fat = st.text_input("Mês para baixar fatura (AAAA-MM)", value=mes_atual(), key="mes_fatura")
-            if st.button("💳 Baixar fatura completa do mês"):
+            st.markdown("##### 💳 Baixar Fatura Completa")
+            
+            c_fat1, c_fat2 = st.columns([2, 1])
+            with c_fat1:
+                mes_fat = seletor_mes_ano("fatura_lote")
+            with c_fat2:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) # Espaçador
+                btn_baixa_lote = st.button("💳 Baixar fatura completa do mês", type="secondary", use_container_width=True)
+                
+            if btn_baixa_lote:
                 n = baixar_fatura_mes(mes_fat, fc_cartao if fc_cartao != "Todos" else None)
-                st.success(f"{n} parcela(s) baixadas para {mes_fat}!")
+                st.success(f"Sucesso! {n} parcela(s) baixadas para o mês {mes_fat}!")
                 st.rerun()
         else:
             st.info("Nenhuma parcela para os filtros selecionados.")
@@ -537,10 +629,19 @@ with tab_cc:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_cc_rec:
     st.subheader("Conta Corrente")
-    mes_cc = st.text_input("Mês (AAAA-MM)", value=mes_atual(), key="mes_cc_rec")
+    
+    # Filtro visual usando dropdowns
+    st.markdown("##### Filtro de Período")
+    mes_cc = seletor_mes_ano("cc")
 
     df_d = carregar_despesas()
     df_r = carregar_receitas()
+
+    # Garantir conversões
+    if not df_d.empty and "valor" in df_d.columns:
+        df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
+    if not df_r.empty and "valor" in df_r.columns:
+        df_r["valor"] = pd.to_numeric(df_r["valor"], errors='coerce').fillna(0.0)
 
     desp_cc = df_d[df_d["data"].astype(str).str.startswith(mes_cc)] if not df_d.empty else pd.DataFrame()
     rec_cc  = df_r[df_r["data"].astype(str).str.startswith(mes_cc)]  if not df_r.empty else pd.DataFrame()
@@ -586,14 +687,36 @@ with tab_cc_rec:
         })
 
     if extrato:
-        st.dataframe(pd.DataFrame(extrato), use_container_width=True, hide_index=True)
+        df_extrato = pd.DataFrame(extrato)
+        
+        # MELHORIA DE USABILIDADE: Seleção na tabela do Extrato
+        event_cc = st.dataframe(
+            df_extrato, 
+            use_container_width=True, 
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+        
+        st.markdown("#### Ações do Lançamento")
+        selected_rows_cc = event_cc.selection.rows
+        if selected_rows_cc:
+            idx_sel = selected_rows_cc[0]
+            mov_sel = movs[idx_sel]
+            id_sel = int(mov_sel["ID"])
+            tipo_sel = mov_sel["_tipo"]
+            desc_sel = mov_sel["Descrição"]
+            val_sel = fmt_moeda(abs(mov_sel["Valor"]))
+            
+            if tipo_sel == "rec":
+                st.warning(f"⚠️ Receita selecionada: **#{id_sel} - {desc_sel} ({val_sel})**")
+                if st.button("🗑 Excluir receita selecionada", type="primary", use_container_width=True):
+                    excluir_receita(id_sel)
+                    st.success(f"Receita #{id_sel} excluída!")
+                    st.rerun()
+            else:
+                st.info(f"ℹ️ O lançamento selecionado é uma **Despesa** (#{id_sel}). Para excluí-la, utilize a aba **☰ Despesas**.")
+        else:
+            st.info("💡 Clique em um lançamento do extrato acima para opções de exclusão (disponível para Receitas).")
     else:
         st.info("Nenhum movimento para o período selecionado.")
-
-    # Excluir receita
-    st.markdown("#### Excluir receita")
-    rid_excluir = st.number_input("ID da receita para excluir", min_value=1, step=1, key="rid_excluir")
-    if st.button("🗑 Excluir receita", type="secondary"):
-        excluir_receita(int(rid_excluir))
-        st.success(f"Receita #{rid_excluir} excluída!")
-        st.rerun()
