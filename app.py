@@ -89,6 +89,15 @@ def add_months(dt: date, months: int) -> date:
 def hoje_str():
     return date.today().strftime("%Y-%m-%d")
 
+def converter_data_para_exibicao(dt_str):
+    try:
+        return datetime.strptime(str(dt_str), "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        try:
+            return datetime.strptime(str(dt_str), "%Y/%m/%d").strftime("%d/%m/%Y")
+        except Exception:
+            return dt_str
+
 def card_html(label, value, color_class):
     return f"""
     <div class="card">
@@ -377,7 +386,7 @@ with tab_lanc:
         valor = c2.text_input("Valor (R$) *", placeholder="0,00")
 
         c3, c4 = st.columns(2)
-        data_d = c3.date_input("Data *", value=date.today())
+        data_d = c3.date_input("Data *", value=date.today(), format="DD/MM/YYYY")
         local  = c4.text_input("Local / Estabelecimento")
 
         c5, c6 = st.columns(2)
@@ -423,7 +432,7 @@ with tab_rec:
         rvalor = r2.text_input("Valor (R$) *", placeholder="0,00")
 
         r3, r4 = st.columns(2)
-        rdata = r3.date_input("Data *", value=date.today())
+        rdata = r3.date_input("Data *", value=date.today(), format="DD/MM/YYYY")
         rcat  = r4.selectbox("Categoria", [""] + CAT_REC)
         robs  = st.text_input("Observação (opcional)")
 
@@ -482,6 +491,7 @@ with tab_lista:
             df_show = df_filtrado[["id", "descricao", "valor", "data", "local",
                                     "pagamento", "categoria", "n_parcelas", "observacao"]].copy()
             df_show["valor"] = df_show["valor"].apply(fmt_moeda)
+            df_show["data"] = df_show["data"].apply(converter_data_para_exibicao)
             df_show.columns = ["ID", "Descrição", "Valor", "Data", "Local",
                                 "Pagamento", "Categoria", "Parcelas", "Obs"]
             
@@ -571,6 +581,7 @@ with tab_cc:
             cols_show = [c for c in cols_show if c in df_p2.columns]
             df_show = df_p2[cols_show].copy()
             df_show["valor"] = df_show["valor"].apply(fmt_moeda)
+            df_show["vencimento"] = df_show["vencimento"].apply(converter_data_para_exibicao)
             df_show.rename(columns={"id": "ID", "descricao": "Despesa", "cartao": "Cartão",
                                      "numero": "Parc.", "total": "Total", "valor": "Valor",
                                      "vencimento": "Vencimento"}, inplace=True)
@@ -680,7 +691,7 @@ with tab_cc_rec:
     for m in movs:
         saldo_ac += m["Valor"]
         extrato.append({
-            "Data": m["Data"], "Descrição": m["Descrição"], "Tipo": m["Tipo"],
+            "Data": converter_data_para_exibicao(m["Data"]), "Descrição": m["Descrição"], "Tipo": m["Tipo"],
             "Categoria": m["Categoria"],
             "Valor": fmt_moeda(abs(m["Valor"])),
             "Saldo": fmt_moeda(saldo_ac),
