@@ -123,14 +123,14 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-@st.cache_resource
+@st.cache_resource(ttl=600)
 def get_sheets_client():
     """Conecta ao Google Sheets via credenciais nos secrets."""
     creds_dict = st.secrets["gcp_service_account"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
-@st.cache_resource
+@st.cache_resource(ttl=600)
 def get_workbook():
     client = get_sheets_client()
     return client.open(st.secrets["SHEET_NAME"])
