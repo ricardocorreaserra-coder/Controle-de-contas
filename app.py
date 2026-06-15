@@ -239,7 +239,7 @@ def delete_rows_batch(ws, indices):
         return
     sorted_indices = sorted(indices, reverse=True)
     requests = []
-    sheet_id = ws._properties['id']
+    sheet_id = ws.id
     for idx in sorted_indices:
         row_num = idx + 1
         requests.append({
