@@ -3,6 +3,7 @@ Controle de Contas - Versão Web (Streamlit + Google Sheets)
 Uso: streamlit run app.py
 """
 
+import html as _html
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -50,8 +51,52 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { font-size: 0.95rem; }
     div[data-testid="stSuccess"] { border-radius: 8px; }
     div[data-testid="stWarning"] { border-radius: 8px; }
+    /* Tela de login */
+    .login-box {
+        max-width: 360px; margin: 6rem auto; text-align: center;
+        padding: 2rem; background: white; border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# S-01 · AUTENTICAÇÃO POR SENHA
+# ══════════════════════════════════════════════════════════════════════════════
+def verificar_autenticacao():
+    if "autenticado" not in st.session_state:
+        st.session_state["autenticado"] = False
+
+    if not st.session_state["autenticado"]:
+        st.markdown("""
+        <div class="login-box">
+            <div style="font-size:2.5rem">💰</div>
+            <h2 style="margin:0.5rem 0 0.25rem">Controle de Contas</h2>
+            <p style="color:#64748b;margin-bottom:1.5rem">Digite a senha para acessar</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            senha = st.text_input(
+                "Senha",
+                type="password",
+                label_visibility="collapsed",
+                placeholder="Digite a senha..."
+            )
+            if st.button("Entrar", use_container_width=True, type="primary"):
+                senha_correta = st.secrets.get("APP_PASSWORD", "")
+                if senha_correta and senha == senha_correta:
+                    st.session_state["autenticado"] = True
+                    st.rerun()
+                elif not senha_correta:
+                    st.error("APP_PASSWORD não configurada nos secrets.")
+                else:
+                    st.error("Senha incorreta.")
+        st.stop()
+
+verificar_autenticacao()
 
 # ── Meses em português ────────────────────────────────────────────────────────
 MESES_PT = {
@@ -98,11 +143,14 @@ def converter_data_para_exibicao(dt_str):
         except Exception:
             return dt_str
 
+# S-02 · card_html com sanitização via html.escape
 def card_html(label, value, color_class):
+    label_safe = _html.escape(str(label))
+    value_safe = _html.escape(str(value))
     return f"""
     <div class="card">
-        <div class="card-label">{label}</div>
-        <div class="card-value {color_class}">{value}</div>
+        <div class="card-label">{label_safe}</div>
+        <div class="card-value {color_class}">{value_safe}</div>
     </div>
     """
 
@@ -139,7 +187,6 @@ def get_sheet(name: str):
     wb = get_workbook()
     try:
         ws = wb.worksheet(name)
-        # Garantir atualização de cabeçalho para parcelas antigas se necessário
         if name == "parcelas":
             headers = ws.row_values(1)
             if "descricao" not in headers or "cartao" not in headers:
@@ -161,8 +208,6 @@ def get_sheet(name: str):
         }
         if name in headers:
             ws.append_row(headers[name])
-        
-        # Se for a planilha de cartões, inicializa com cartões padrão
         if name == "cartoes":
             default_cards = [
                 [1, "Nubank", 5000, 5, 12, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
@@ -178,8 +223,6 @@ def get_sheet(name: str):
 def sheet_to_df(ws) -> pd.DataFrame:
     data = ws.get_all_records()
     df = pd.DataFrame(data) if data else pd.DataFrame()
-    
-    # Garantir que colunas esperadas sempre existam no dataframe para evitar KeyError no Pandas
     name = ws.title
     expected_headers = {
         "despesas": ["id", "descricao", "valor", "data", "local",
@@ -210,7 +253,6 @@ def carregar_cartoes():
     ws = get_sheet("cartoes")
     df = sheet_to_df(ws)
     if df.empty:
-        # Força pré-população se por acaso a planilha estiver sem dados
         default_cards = [
             [1, "Nubank", 5000, 5, 12, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
             [2, "Itaú", 5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
@@ -234,7 +276,7 @@ def obter_nomes_cartoes() -> list:
     return ["Nubank", "Itaú", "Bradesco", "Inter", "Santander", "Outro"]
 
 def delete_rows_batch(ws, indices):
-    """Deleta várias linhas do Google Sheets em uma única requisição em lote (batch request)."""
+    """Deleta várias linhas do Google Sheets em uma única requisição em lote."""
     if not indices:
         return
     sorted_indices = sorted(indices, reverse=True)
@@ -260,31 +302,21 @@ def calcular_vencimento_parcela(data_compra: date, dia_fechamento: int, dia_venc
     try:
         fechamento_mes_compra = date(data_compra.year, data_compra.month, dia_fechamento)
     except ValueError:
-        import calendar
         last_day = calendar.monthrange(data_compra.year, data_compra.month)[1]
         fechamento_mes_compra = date(data_compra.year, data_compra.month, last_day)
-        
-    # Se a compra foi após o fechamento, ela vai para a fatura do próximo mês
-    if data_compra > fechamento_mes_compra:
-        meses_adicionais = 1
-    else:
-        meses_adicionais = 0
-        
-    # Adicionar meses correspondentes à parcela
+
+    meses_adicionais = 1 if data_compra > fechamento_mes_compra else 0
     total_meses = meses_adicionais + (num_parcela - 1)
-    
-    # Se o dia de vencimento for menor que o de fechamento, o vencimento é no mês seguinte ao fechamento
+
     if dia_vencimento < dia_fechamento:
         total_meses += 1
-        
+
     venc = add_months(data_compra, total_meses)
-    
-    # Ajustar para o dia de vencimento desejado
-    import calendar
     max_day = calendar.monthrange(venc.year, venc.month)[1]
     dia_ajustado = min(dia_vencimento, max_day)
     return date(venc.year, venc.month, dia_ajustado)
 
+# ── Funções de persistência com tratamento de erro (S-06 antecipado) ───────────
 def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc, obs):
     ws_d = get_sheet("despesas")
     ws_p = get_sheet("parcelas")
@@ -292,10 +324,8 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc,
     ws_d.append_row([did, desc, valor, data, local, pag, cat,
                      cartao or "", n_parc, obs,
                      datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-    
-    # MODIFICAÇÃO: Lançar parcela no cartão mesmo quando n_parc >= 1
+
     if pag == "Cartão de crédito":
-        # Buscar fechamento e vencimento dinâmicos
         df_c = carregar_cartoes()
         card_info = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
         if not card_info.empty:
@@ -304,7 +334,7 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc,
         else:
             df_fechamento = 10
             df_vencimento = dia_venc
-            
+
         pid   = next_id(ws_p)
         base  = datetime.strptime(data, "%Y-%m-%d").date()
         vp    = round(valor / n_parc, 2)
@@ -319,33 +349,26 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc,
 def salvar_parcela_manual(cartao, desc, valor_parcela, num_inicial, num_total, vencimento_inicial, obs):
     ws_p = get_sheet("parcelas")
     pid = next_id(ws_p)
-    
+
     df_c = carregar_cartoes()
     card_info = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
     if not card_info.empty:
-        df_fechamento = int(card_info.iloc[0]["dia_fechamento"])
         df_vencimento = int(card_info.iloc[0]["dia_vencimento"])
     else:
-        df_fechamento = 10
         df_vencimento = 17
 
     base_date = datetime.strptime(vencimento_inicial, "%Y-%m-%d").date()
     rows = []
-    
     num_a_gerar = num_total - num_inicial + 1
     for i in range(num_a_gerar):
         num_parcela = num_inicial + i
         venc = add_months(base_date, i)
-        
-        # Ajustar para o dia de vencimento desejado
-        import calendar
         max_day = calendar.monthrange(venc.year, venc.month)[1]
         dia_ajustado = min(df_vencimento, max_day)
         venc = venc.replace(day=dia_ajustado)
-        
         rows.append([
             pid + i,
-            -1,  # despesa_id = -1 indica que é manual/legado
+            -1,
             num_parcela,
             num_total,
             valor_parcela,
@@ -382,12 +405,10 @@ def salvar_receita(desc, valor, data, cat, obs):
 def excluir_despesa(did: int):
     ws_d = get_sheet("despesas")
     ws_p = get_sheet("parcelas")
-    
     df_p = sheet_to_df(ws_p)
     if not df_p.empty and "despesa_id" in df_p.columns:
         ids_excluir = df_p[df_p["despesa_id"].astype(str) == str(did)].index.tolist()
         delete_rows_batch(ws_p, ids_excluir)
-        
     df_d = sheet_to_df(ws_d)
     if not df_d.empty:
         idx_list = df_d[df_d["id"].astype(str) == str(did)].index.tolist()
@@ -418,9 +439,7 @@ def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
     df_d = sheet_to_df(ws_d)
     if df_p.empty:
         return 0
-    
-    # Para retrocompatibilidade e lançamentos manuais, garantimos que as colunas
-    # de descrição/cartão estejam preenchidas
+
     df_p_full = df_p.copy()
     if not df_d.empty:
         df_d_sub = df_d[["id", "cartao"]].rename(columns={"id": "despesa_id", "cartao": "cartao_dep"})
@@ -429,15 +448,14 @@ def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
             lambda r: r["cartao_dep"] if pd.notna(r.get("cartao_dep")) and r["cartao_dep"] != "" else r.get("cartao", ""),
             axis=1
         )
-        
+
     mask = (df_p_full["vencimento"].astype(str).str.startswith(mes)) & \
            (df_p_full["status"] == "pendente")
-           
+
     if cartao_filtro and cartao_filtro != "Todos":
         mask = mask & (df_p_full["cartao"] == cartao_filtro)
-        
+
     idxs = df_p_full[mask].index.tolist()
-    
     if not idxs:
         return 0
 
@@ -494,13 +512,11 @@ with tab_dash:
     df_d = carregar_despesas()
     df_r = carregar_receitas()
 
-    # Garantir conversões corretas
     if not df_d.empty and "valor" in df_d.columns:
         df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
     if not df_r.empty and "valor" in df_r.columns:
         df_r["valor"] = pd.to_numeric(df_r["valor"], errors='coerce').fillna(0.0)
 
-    # Filtrar pelo mês
     desp_mes = df_d[df_d["data"].astype(str).str.startswith(mes_dash)] if not df_d.empty else pd.DataFrame()
     rec_mes  = df_r[df_r["data"].astype(str).str.startswith(mes_dash)]  if not df_r.empty else pd.DataFrame()
 
@@ -509,7 +525,6 @@ with tab_dash:
     saldo      = total_rec - total_desp
     saldo_cor  = "green" if saldo >= 0 else "red"
 
-    # Cards resumo
     c1, c2, c3 = st.columns(3)
     with c1: st.markdown(card_html("Receitas do mês", fmt_moeda(total_rec), "green"),  unsafe_allow_html=True)
     with c2: st.markdown(card_html("Despesas do mês", fmt_moeda(total_desp), "red"),    unsafe_allow_html=True)
@@ -517,10 +532,8 @@ with tab_dash:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Gráficos
     col1, col2, col3 = st.columns(3)
 
-    # ── Histórico 6 meses ──
     with col1:
         st.subheader("Histórico 6 meses")
         hist = []
@@ -542,7 +555,6 @@ with tab_dash:
                            legend=dict(orientation="h", y=-0.2))
         st.plotly_chart(fig1, use_container_width=True)
 
-    # ── Pizza categorias despesa (Estilo Donut) ──
     with col2:
         st.subheader("Despesas por categoria")
         if not desp_mes.empty and "categoria" in desp_mes.columns:
@@ -556,7 +568,6 @@ with tab_dash:
         else:
             st.info("Sem dados para o período.")
 
-    # ── Pizza pagamento (Estilo Donut) ──
     with col3:
         st.subheader("Por pagamento")
         if not desp_mes.empty and "pagamento" in desp_mes.columns:
@@ -600,20 +611,36 @@ with tab_lanc:
 
     if submitted:
         erros = []
-        if not desc.strip(): erros.append("Preencha a descrição.")
+        if not desc.strip():
+            erros.append("Preencha a descrição.")
+        # S-03 · Validação de limites de valor
         try:
             v = float(valor.replace(".", "").replace(",", "."))
-            assert v > 0
+            if not (0 < v <= 1_000_000):
+                erros.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
         except Exception:
             erros.append("Valor inválido.")
             v = 0
-        if not pag: erros.append("Selecione o modo de pagamento.")
+        if not pag:
+            erros.append("Selecione o modo de pagamento.")
+
         if erros:
-            for e in erros: st.error(e)
+            for e in erros:
+                st.error(e)
         else:
-            salvar_despesa(desc.strip(), v, data_d.strftime("%Y-%m-%d"),
-                           local.strip(), pag, cat, cartao, n_parc, dia_venc, obs.strip())
-            st.success("Despesa lançada com sucesso!")
+            # S-05 · Debounce para evitar duplo clique
+            if st.session_state.get("salvando_despesa"):
+                st.warning("Aguarde, salvando...")
+            else:
+                st.session_state["salvando_despesa"] = True
+                try:
+                    salvar_despesa(desc.strip(), v, data_d.strftime("%Y-%m-%d"),
+                                   local.strip(), pag, cat, cartao, n_parc, dia_venc, obs.strip())
+                    st.success("✅ Despesa lançada com sucesso!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar despesa: {e}")
+                finally:
+                    st.session_state["salvando_despesa"] = False
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LANÇAR RECEITA
@@ -634,29 +661,42 @@ with tab_rec:
 
     if rsubmit:
         erros = []
-        if not rdesc.strip(): erros.append("Preencha a descrição.")
+        if not rdesc.strip():
+            erros.append("Preencha a descrição.")
+        # S-03 · Validação de limites de valor
         try:
             rv = float(rvalor.replace(".", "").replace(",", "."))
-            assert rv > 0
+            if not (0 < rv <= 1_000_000):
+                erros.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
         except Exception:
             erros.append("Valor inválido.")
             rv = 0
+
         if erros:
-            for e in erros: st.error(e)
+            for e in erros:
+                st.error(e)
         else:
-            salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip())
-            st.success("Receita lançada com sucesso!")
+            # S-05 · Debounce para evitar duplo clique
+            if st.session_state.get("salvando_receita"):
+                st.warning("Aguarde, salvando...")
+            else:
+                st.session_state["salvando_receita"] = True
+                try:
+                    salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip())
+                    st.success("✅ Receita lançada com sucesso!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar receita: {e}")
+                finally:
+                    st.session_state["salvando_receita"] = False
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LISTA DE DESPESAS
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_lista:
     st.subheader("Despesas")
-    
-    # Filtro visual usando os dropdowns de Mês e Ano
     st.markdown("##### Filtros de visualização")
     fmes = seletor_mes_ano("lista")
-    
+
     f1, f2 = st.columns(2)
     fpag  = f1.selectbox("Pagamento", ["Todos"] + PAGAMENTOS, key="fpag_lista")
     fcat  = f2.selectbox("Categoria", ["Todas"] + CAT_DESP,  key="fcat_lista")
@@ -665,9 +705,7 @@ with tab_lista:
     if df_d.empty:
         st.info("Nenhuma despesa cadastrada.")
     else:
-        # Forçar conversão antes de somar
         df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
-        
         mask = df_d["data"].astype(str).str.startswith(fmes)
         if fpag != "Todos": mask &= df_d["pagamento"] == fpag
         if fcat != "Todas": mask &= df_d["categoria"] == fcat
@@ -688,11 +726,10 @@ with tab_lista:
             df_show["data"] = df_show["data"].apply(converter_data_para_exibicao)
             df_show.columns = ["ID", "Descrição", "Valor", "Data", "Local",
                                 "Pagamento", "Categoria", "Parcelas", "Obs"]
-            
-            # MELHORIA DE USABILIDADE: Habilita seleção direta por linha
+
             event_d = st.dataframe(
-                df_show, 
-                use_container_width=True, 
+                df_show,
+                use_container_width=True,
                 hide_index=True,
                 on_select="rerun",
                 selection_mode="single-row"
@@ -705,12 +742,14 @@ with tab_lista:
                 id_excluir = int(df_filtrado.iloc[idx_sel]["id"])
                 desc_excluir = df_filtrado.iloc[idx_sel]["descricao"]
                 val_excluir = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])
-                
                 st.warning(f"⚠️ Despesa selecionada: **#{id_excluir} - {desc_excluir} ({val_excluir})**")
                 if st.button("🗑 Excluir despesa selecionada", type="primary", use_container_width=True):
-                    excluir_despesa(id_excluir)
-                    st.success(f"Despesa #{id_excluir} excluída com sucesso!")
-                    st.rerun()
+                    try:
+                        excluir_despesa(id_excluir)
+                        st.success(f"Despesa #{id_excluir} excluída com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao excluir: {e}")
             else:
                 st.info("💡 Clique em uma linha na tabela acima para liberar as ações de exclusão.")
         else:
@@ -726,24 +765,21 @@ with tab_cc:
         "➕ Lançar Histórico",
         "⚙️ Cartões & Configurações"
     ])
-    
+
     df_p = carregar_parcelas()
     df_d = carregar_despesas()
     hoje = hoje_str()
-    
-    # ── Mapear descrição e cartão para todas as parcelas (normais e manuais) ──
+
     df_p2 = pd.DataFrame()
     if not df_p.empty:
         df_p_converted = df_p.copy()
         df_p_converted["valor"] = pd.to_numeric(df_p_converted["valor"], errors='coerce').fillna(0.0)
-        
+
         if not df_d.empty:
             df_d_sub = df_d[["id", "descricao", "cartao"]].rename(
                 columns={"id": "despesa_id", "descricao": "desc_dep", "cartao": "cartao_dep"}
             )
             df_p2 = df_p_converted.merge(df_d_sub, on="despesa_id", how="left")
-            
-            # Unificar
             df_p2["descricao"] = df_p2.apply(
                 lambda r: r["desc_dep"] if pd.notna(r.get("desc_dep")) and r["desc_dep"] != "" else r.get("descricao", ""),
                 axis=1
@@ -756,24 +792,20 @@ with tab_cc:
             df_p2 = df_p_converted.copy()
             df_p2["descricao"] = df_p2.get("descricao", "")
             df_p2["cartao"] = df_p2.get("cartao", "")
-            
+
         df_p2["descricao"] = df_p2["descricao"].fillna("").astype(str)
         df_p2["cartao"] = df_p2["cartao"].fillna("").astype(str)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SUB-ABA: PARCELAS (LISTA E QUITAÇÃO)
-    # ══════════════════════════════════════════════════════════════════════════
     with sub_cc_list:
         st.subheader("Cartão de Crédito — Parcelas")
-        
+
         if df_p.empty or df_p2.empty:
             st.info("Nenhuma parcela cadastrada.")
         else:
             fc1, fc2 = st.columns(2)
             fc_cartao = fc1.selectbox("Cartão", ["Todos"] + obter_nomes_cartoes(), key="fc_cartao")
             fc_status = fc2.selectbox("Status", ["Todos", "Pendente", "Vencido", "Pago"], key="fc_status")
-            
-            # Filtros aplicados em df_p2
+
             df_filtrado = df_p2.copy()
             if fc_cartao != "Todos":
                 df_filtrado = df_filtrado[df_filtrado["cartao"] == fc_cartao]
@@ -784,25 +816,24 @@ with tab_cc:
                     df_filtrado = df_filtrado[(df_filtrado["status"] == "pendente") & (df_filtrado["vencimento"].astype(str) >= hoje)]
                 else:
                     df_filtrado = df_filtrado[df_filtrado["status"] == fc_status.lower()]
-            
-            # Cards resumo
+
             pend = float(df_p2[df_p2["status"] == "pendente"]["valor"].sum())
             venc = int(((df_p2["status"] == "pendente") & (df_p2["vencimento"].astype(str) < hoje)).sum())
             pagas = int((df_p2["status"] == "pago").sum())
-            
+
             cc1, cc2, cc3 = st.columns(3)
             with cc1: st.markdown(card_html("A pagar total", fmt_moeda(pend), "orange"), unsafe_allow_html=True)
             with cc2: st.markdown(card_html("Vencidas", f"{venc} parcela(s)", "red"), unsafe_allow_html=True)
             with cc3: st.markdown(card_html("Pagas", f"{pagas} parcela(s)", "green"), unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            
+
             if not df_filtrado.empty:
                 def status_label(row):
                     if row["status"] == "pago": return "✅ Pago"
                     if str(row["vencimento"]) < hoje: return "❌ Vencido"
                     return "⏳ Pendente"
                 df_filtrado["Status"] = df_filtrado.apply(status_label, axis=1)
-                
+
                 cols_show = ["id", "descricao", "cartao", "numero", "total", "valor", "vencimento", "Status"]
                 cols_show = [c for c in cols_show if c in df_filtrado.columns]
                 df_show = df_filtrado[cols_show].copy()
@@ -811,7 +842,7 @@ with tab_cc:
                 df_show.rename(columns={"id": "ID", "descricao": "Despesa/Item", "cartao": "Cartão",
                                          "numero": "Parc.", "total": "Total", "valor": "Valor",
                                          "vencimento": "Vencimento"}, inplace=True)
-                
+
                 event_p = st.dataframe(
                     df_show,
                     use_container_width=True,
@@ -820,7 +851,7 @@ with tab_cc:
                     selection_mode="single-row",
                     key="df_parcelas_list"
                 )
-                
+
                 st.markdown("#### Ações da Parcela")
                 selected_rows_p = event_p.selection.rows
                 if selected_rows_p:
@@ -829,21 +860,27 @@ with tab_cc:
                     desc_p = df_filtrado.iloc[idx_sel]["descricao"]
                     val_p = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])
                     status_p = df_filtrado.iloc[idx_sel]["status"]
-                    
+
                     st.info(f"📋 Parcela selecionada: **#{pid_acao} - {desc_p} ({val_p})** | Status: **{status_p.upper()}**")
-                    
+
                     ba2, ba3 = st.columns(2)
                     if ba2.button("✔ Dar baixa (Marcar como Pago)", type="primary", use_container_width=True, key="btn_pago_p"):
-                        atualizar_parcela(pid_acao, "pago")
-                        st.success(f"Parcela #{pid_acao} marcada como paga!")
-                        st.rerun()
+                        try:
+                            atualizar_parcela(pid_acao, "pago")
+                            st.success(f"Parcela #{pid_acao} marcada como paga!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
                     if ba3.button("↩ Estornar (Voltar para Pendente)", use_container_width=True, key="btn_pendente_p"):
-                        atualizar_parcela(pid_acao, "pendente")
-                        st.warning(f"Parcela #{pid_acao} estornada para pendente.")
-                        st.rerun()
+                        try:
+                            atualizar_parcela(pid_acao, "pendente")
+                            st.warning(f"Parcela #{pid_acao} estornada para pendente.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
                 else:
                     st.info("💡 Clique em uma parcela na tabela acima para liberar as ações de pagamento/estorno.")
-                
+
                 st.markdown("---")
                 st.markdown("##### 💳 Baixar Fatura Completa do Mês")
                 c_fat1, c_fat2 = st.columns([2, 1])
@@ -852,20 +889,20 @@ with tab_cc:
                 with c_fat2:
                     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
                     btn_baixa_lote = st.button("💳 Baixar fatura completa do mês", type="secondary", use_container_width=True, key="btn_baixa_lote")
-                
+
                 if btn_baixa_lote:
-                    n = baixar_fatura_mes(mes_fat, fc_cartao if fc_cartao != "Todos" else None)
-                    st.success(f"Sucesso! {n} parcela(s) baixadas para o mês {mes_fat}!")
-                    st.rerun()
+                    try:
+                        n = baixar_fatura_mes(mes_fat, fc_cartao if fc_cartao != "Todos" else None)
+                        st.success(f"Sucesso! {n} parcela(s) baixadas para o mês {mes_fat}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao baixar fatura: {e}")
             else:
                 st.info("Nenhuma parcela para os filtros selecionados.")
-                
-    # ══════════════════════════════════════════════════════════════════════════
-    # SUB-ABA: FATURAS FUTURAS (PROJEÇÃO)
-    # ══════════════════════════════════════════════════════════════════════════
+
     with sub_cc_faturas:
         st.subheader("Projeção de Faturas Futuras")
-        
+
         if df_p.empty or df_p2.empty:
             st.info("Nenhuma parcela pendente para gerar projeção.")
         else:
@@ -876,14 +913,13 @@ with tab_cc:
                 df_pend["Mês Vencimento"] = df_pend["vencimento"].astype(str).str.slice(0, 7)
                 df_fat_group = df_pend.groupby(["Mês Vencimento", "cartao"])["valor"].sum().reset_index()
                 df_pivot = df_fat_group.pivot(index="Mês Vencimento", columns="cartao", values="valor").fillna(0.0)
-                
+
                 st.markdown("##### Valores projetados por Fatura (R$)")
                 df_pivot_fmt = df_pivot.copy()
                 for col in df_pivot_fmt.columns:
                     df_pivot_fmt[col] = df_pivot_fmt[col].apply(fmt_moeda)
-                
                 st.dataframe(df_pivot_fmt, use_container_width=True)
-                
+
                 st.markdown("<br>", unsafe_allow_html=True)
                 fig_proj = px.bar(
                     df_fat_group,
@@ -897,87 +933,90 @@ with tab_cc:
                 )
                 fig_proj.update_layout(barmode="stack", separators=',.')
                 st.plotly_chart(fig_proj, use_container_width=True)
-                
+
                 st.markdown("---")
                 st.markdown("##### 🔍 Detalhamento de Fatura Específica")
                 col_d1, col_d2 = st.columns(2)
-                
                 lista_cartoes_det = ["Todos"] + list(df_fat_group["cartao"].unique())
                 lista_meses_det = sorted(list(df_fat_group["Mês Vencimento"].unique()))
-                
                 sel_cartao_det = col_d1.selectbox("Selecione o Cartão", lista_cartoes_det, key="sel_cartao_det")
                 sel_mes_det = col_d2.selectbox("Selecione o Mês da Fatura", lista_meses_det, key="sel_mes_det")
-                
+
                 df_detalhe = df_pend[df_pend["Mês Vencimento"] == sel_mes_det].copy()
                 if sel_cartao_det != "Todos":
                     df_detalhe = df_detalhe[df_detalhe["cartao"] == sel_cartao_det]
-                
+
                 if df_detalhe.empty:
                     st.info("Nenhum lançamento pendente encontrado para este filtro.")
                 else:
                     total_fatura_det = float(df_detalhe["valor"].sum())
                     st.markdown(f"**Total da fatura selecionada: {fmt_moeda(total_fatura_det)}**")
-                    
                     df_det_show = df_detalhe[["descricao", "cartao", "numero", "total", "valor", "vencimento"]].copy()
                     df_det_show["valor"] = df_det_show["valor"].apply(fmt_moeda)
                     df_det_show["vencimento"] = df_det_show["vencimento"].apply(converter_data_para_exibicao)
                     df_det_show.columns = ["Descrição/Item", "Cartão", "Parcela", "Total Parc.", "Valor", "Vencimento"]
-                    
                     st.dataframe(df_det_show, use_container_width=True, hide_index=True)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SUB-ABA: LANÇAR HISTÓRICO (PARCELAS ANTERIORES)
-    # ══════════════════════════════════════════════════════════════════════════
     with sub_cc_lanc:
         st.subheader("Lançar Parcelas Anteriores / Saldo Devedor")
         st.markdown(
             "Utilize este formulário para lançar compras parceladas que foram feitas em meses anteriores "
             "ao início do uso deste aplicativo e que ainda possuem parcelas a vencer no cartão de crédito."
         )
-        
+
         with st.form("form_parcelas_manuais", clear_on_submit=True):
             col_m1, col_m2 = st.columns(2)
             card_m = col_m1.selectbox("Cartão de Crédito", obter_nomes_cartoes(), key="m_card")
             desc_m = col_m2.text_input("Descrição da Compra * (ex: Compra Geladeira)")
-            
+
             col_m3, col_m4, col_m5 = st.columns(3)
             val_parc_m = col_m3.text_input("Valor da Parcela (R$) *", placeholder="0,00", key="m_val")
             parc_init_m = col_m4.selectbox("Próxima Parcela a vencer *", list(range(1, 49)), index=0, key="m_init")
             parc_total_m = col_m5.selectbox("Total de Parcelas da Compra *", list(range(1, 49)), index=11, key="m_total")
-            
+
             col_m6 = st.columns(1)[0]
             venc_init_m = col_m6.date_input("Vencimento da próxima parcela a vencer *", value=date.today(), format="DD/MM/YYYY", key="m_date")
-            
+
             obs_m = st.text_input("Observação (opcional)", key="m_obs")
             sub_manual = st.form_submit_button("✔ Salvar Parcelas Históricas", type="primary", use_container_width=True)
-            
+
         if sub_manual:
             erros_m = []
             if not desc_m.strip():
                 erros_m.append("Preencha a descrição.")
             if parc_init_m > parc_total_m:
                 erros_m.append("A próxima parcela a vencer não pode ser maior que o total de parcelas.")
+            # S-03 · Validação de limites de valor
             try:
                 v_p = float(val_parc_m.replace(".", "").replace(",", "."))
-                assert v_p > 0
+                if not (0 < v_p <= 1_000_000):
+                    erros_m.append("Valor da parcela deve estar entre R$ 0,01 e R$ 1.000.000,00.")
             except Exception:
                 erros_m.append("Valor da parcela inválido.")
                 v_p = 0
-                
-            if erros_m:
-                for e in erros_m: st.error(e)
-            else:
-                salvar_parcela_manual(card_m, desc_m.strip(), v_p, parc_init_m, parc_total_m, venc_init_m.strftime("%Y-%m-%d"), obs_m.strip())
-                st.success(f"Parcelas históricas do item '{desc_m}' cadastradas com sucesso!")
-                st.rerun()
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SUB-ABA: CONFIGURAÇÕES (GERENCIAMENTO DE CARTÕES)
-    # ══════════════════════════════════════════════════════════════════════════
+            if erros_m:
+                for e in erros_m:
+                    st.error(e)
+            else:
+                # S-05 · Debounce para evitar duplo clique
+                if st.session_state.get("salvando_parcela"):
+                    st.warning("Aguarde, salvando...")
+                else:
+                    st.session_state["salvando_parcela"] = True
+                    try:
+                        salvar_parcela_manual(card_m, desc_m.strip(), v_p, parc_init_m, parc_total_m,
+                                              venc_init_m.strftime("%Y-%m-%d"), obs_m.strip())
+                        st.success(f"Parcelas históricas do item '{desc_m}' cadastradas com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar parcelas: {e}")
+                    finally:
+                        st.session_state["salvando_parcela"] = False
+
     with sub_cc_config:
         st.subheader("Gerenciamento de Cartões")
-        
-        # Lista cartões cadastrados
+
         st.markdown("##### Cartões Cadastrados")
         df_c = carregar_cartoes()
         if df_c.empty:
@@ -986,7 +1025,7 @@ with tab_cc:
             df_c_show = df_c[["id", "nome", "limite", "dia_fechamento", "dia_vencimento"]].copy()
             df_c_show["limite"] = df_c_show["limite"].apply(fmt_moeda)
             df_c_show.columns = ["ID", "Nome do Cartão", "Limite de Crédito", "Dia do Fechamento", "Dia do Vencimento"]
-            
+
             event_c = st.dataframe(
                 df_c_show,
                 use_container_width=True,
@@ -995,7 +1034,7 @@ with tab_cc:
                 selection_mode="single-row",
                 key="df_cartoes_config_list"
             )
-            
+
             selected_rows_c = event_c.selection.rows
             if selected_rows_c:
                 idx_sel = selected_rows_c[0]
@@ -1003,58 +1042,63 @@ with tab_cc:
                 nome_cartao = df_c.iloc[idx_sel]["nome"]
                 st.warning(f"⚠️ Cartão selecionado para exclusão: **#{id_cartao} - {nome_cartao}**")
                 if st.button("🗑 Excluir cartão selecionado", type="primary", use_container_width=True, key="btn_del_card"):
-                    excluir_cartao(id_cartao)
-                    st.success(f"Cartão '{nome_cartao}' excluído com sucesso!")
-                    st.rerun()
+                    try:
+                        excluir_cartao(id_cartao)
+                        st.success(f"Cartão '{nome_cartao}' excluído com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao excluir cartão: {e}")
             else:
                 st.info("💡 Clique em um cartão na tabela acima para liberar as opções de exclusão.")
-                
-        # Formulário para cadastrar novo cartão
+
         st.markdown("---")
         st.markdown("##### Cadastrar Novo Cartão")
         with st.form("form_cadastro_cartao", clear_on_submit=True):
             col_nc1, col_nc2 = st.columns(2)
             nome_nc = col_nc1.text_input("Nome do Cartão * (ex: Nubank Platinum)")
             limite_nc = col_nc2.text_input("Limite de Crédito (R$) *", placeholder="0,00", key="nc_limit")
-            
+
             col_nc3, col_nc4 = st.columns(2)
             fechamento_nc = col_nc3.selectbox("Dia do Fechamento da Fatura *", list(range(1, 32)), index=4, key="nc_fech")
             vencimento_nc = col_nc4.selectbox("Dia do Vencimento da Fatura *", list(range(1, 32)), index=11, key="nc_venc")
-            
+
             submit_nc = st.form_submit_button("✔ Cadastrar Novo Cartão", type="primary", use_container_width=True)
-            
+
         if submit_nc:
             erros_nc = []
             if not nome_nc.strip():
                 erros_nc.append("Preencha o nome do cartão.")
             try:
                 lim = float(limite_nc.replace(".", "").replace(",", "."))
-                assert lim >= 0
+                if lim < 0:
+                    erros_nc.append("Limite não pode ser negativo.")
             except Exception:
                 erros_nc.append("Limite de crédito inválido.")
                 lim = 0
-                
+
             if erros_nc:
-                for e in erros_nc: st.error(e)
+                for e in erros_nc:
+                    st.error(e)
             else:
-                salvar_cartao(nome_nc.strip(), lim, fechamento_nc, vencimento_nc)
-                st.success(f"Novo cartão '{nome_nc}' cadastrado com sucesso!")
-                st.rerun()
+                try:
+                    salvar_cartao(nome_nc.strip(), lim, fechamento_nc, vencimento_nc)
+                    st.success(f"Novo cartão '{nome_nc}' cadastrado com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao cadastrar cartão: {e}")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONTA CORRENTE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_cc_rec:
     st.subheader("Conta Corrente")
-    
-    # Filtro visual usando dropdowns
+
     st.markdown("##### Filtro de Período")
     mes_cc = seletor_mes_ano("cc")
 
     df_d = carregar_despesas()
     df_r = carregar_receitas()
 
-    # Garantir conversões
     if not df_d.empty and "valor" in df_d.columns:
         df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
     if not df_r.empty and "valor" in df_r.columns:
@@ -1074,7 +1118,6 @@ with tab_cc_rec:
     with m3: st.markdown(card_html("Saldo acumulado", fmt_moeda(saldo_cc), saldo_cor_cc), unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Montar extrato
     movs = []
     if not rec_cc.empty:
         for _, row in rec_cc.iterrows():
@@ -1105,16 +1148,15 @@ with tab_cc_rec:
 
     if extrato:
         df_extrato = pd.DataFrame(extrato)
-        
-        # MELHORIA DE USABILIDADE: Seleção na tabela do Extrato
+
         event_cc = st.dataframe(
-            df_extrato, 
-            use_container_width=True, 
+            df_extrato,
+            use_container_width=True,
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row"
         )
-        
+
         st.markdown("#### Ações do Lançamento")
         selected_rows_cc = event_cc.selection.rows
         if selected_rows_cc:
@@ -1124,13 +1166,16 @@ with tab_cc_rec:
             tipo_sel = mov_sel["_tipo"]
             desc_sel = mov_sel["Descrição"]
             val_sel = fmt_moeda(abs(mov_sel["Valor"]))
-            
+
             if tipo_sel == "rec":
                 st.warning(f"⚠️ Receita selecionada: **#{id_sel} - {desc_sel} ({val_sel})**")
                 if st.button("🗑 Excluir receita selecionada", type="primary", use_container_width=True):
-                    excluir_receita(id_sel)
-                    st.success(f"Receita #{id_sel} excluída!")
-                    st.rerun()
+                    try:
+                        excluir_receita(id_sel)
+                        st.success(f"Receita #{id_sel} excluída!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao excluir: {e}")
             else:
                 st.info(f"ℹ️ O lançamento selecionado é uma **Despesa** (#{id_sel}). Para excluí-la, utilize a aba **☰ Despesas**.")
         else:
