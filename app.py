@@ -22,7 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Estilos CSS Atualizados ───────────────────────────────────────────────────
+# ── Estilos CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
     .main-header {
@@ -34,7 +34,7 @@ st.markdown("""
     .card {
         background: white; border: 1px solid #e2e8f0;
         border-radius: 12px; padding: 1.25rem 1.5rem;
-        text-align: center; 
+        text-align: center;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
         transition: transform 0.2s, box-shadow 0.2s;
     }
@@ -79,8 +79,7 @@ def verificar_autenticacao():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             senha = st.text_input(
-                "Senha",
-                type="password",
+                "Senha", type="password",
                 label_visibility="collapsed",
                 placeholder="Digite a senha..."
             )
@@ -208,12 +207,12 @@ def get_sheet(name: str):
             ws.append_row(headers[name])
         if name == "cartoes":
             default_cards = [
-                [1, "Nubank",   5000,  5, 12, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                [2, "Itaú",     5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                [3, "Bradesco", 5000, 15, 22, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                [4, "Inter",    5000, 20, 27, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                [5, "Santander",5000, 25,  2, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-                [6, "Outro",    5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                [1, "Nubank",    5000,  5, 12, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                [2, "Itaú",      5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                [3, "Bradesco",  5000, 15, 22, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                [4, "Inter",     5000, 20, 27, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                [5, "Santander", 5000, 25,  2, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+                [6, "Outro",     5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
             ]
             ws.append_rows(default_cards)
         return ws
@@ -246,34 +245,33 @@ def next_id(ws) -> int:
     return int(ids.max()) + 1
 
 # ── Lógica de dados ────────────────────────────────────────────────────────────
-# P-01 · TTL aumentado de 30s para 300s em todas as funções de carregamento
 @st.cache_data(ttl=300)
 def carregar_cartoes():
     ws = get_sheet("cartoes")
     df = sheet_to_df(ws)
     if df.empty:
         default_cards = [
-            [1, "Nubank",   5000,  5, 12, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            [2, "Itaú",     5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            [3, "Bradesco", 5000, 15, 22, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            [4, "Inter",    5000, 20, 27, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            [5, "Santander",5000, 25,  2, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
-            [6, "Outro",    5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            [1, "Nubank",    5000,  5, 12, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            [2, "Itaú",      5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            [3, "Bradesco",  5000, 15, 22, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            [4, "Inter",     5000, 20, 27, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            [5, "Santander", 5000, 25,  2, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            [6, "Outro",     5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
         ]
         ws.append_rows(default_cards)
         carregar_cartoes.clear()
         df = sheet_to_df(ws)
     return df
 
-@st.cache_data(ttl=300)   # P-01
+@st.cache_data(ttl=300)
 def carregar_despesas():
     return sheet_to_df(get_sheet("despesas"))
 
-@st.cache_data(ttl=300)   # P-01
+@st.cache_data(ttl=300)
 def carregar_receitas():
     return sheet_to_df(get_sheet("receitas"))
 
-@st.cache_data(ttl=300)   # P-01
+@st.cache_data(ttl=300)
 def carregar_parcelas():
     return sheet_to_df(get_sheet("parcelas"))
 
@@ -291,8 +289,8 @@ def delete_rows_batch(ws, indices):
     if not indices:
         return
     sorted_indices = sorted(indices, reverse=True)
-    requests = []
     sheet_id = ws.id
+    requests = []
     for idx in sorted_indices:
         row_num = idx + 1
         requests.append({
@@ -308,23 +306,18 @@ def delete_rows_batch(ws, indices):
     ws.spreadsheet.batch_update({"requests": requests})
 
 def calcular_vencimento_parcela(data_compra: date, dia_fechamento: int, dia_vencimento: int, num_parcela: int) -> date:
-    """Calcula o vencimento da parcela baseado no dia de fechamento e vencimento do cartão."""
     try:
         fechamento_mes_compra = date(data_compra.year, data_compra.month, dia_fechamento)
     except ValueError:
         last_day = calendar.monthrange(data_compra.year, data_compra.month)[1]
         fechamento_mes_compra = date(data_compra.year, data_compra.month, last_day)
-
     meses_adicionais = 1 if data_compra > fechamento_mes_compra else 0
     total_meses = meses_adicionais + (num_parcela - 1)
-
     if dia_vencimento < dia_fechamento:
         total_meses += 1
-
     venc = add_months(data_compra, total_meses)
     max_day = calendar.monthrange(venc.year, venc.month)[1]
-    dia_ajustado = min(dia_vencimento, max_day)
-    return date(venc.year, venc.month, dia_ajustado)
+    return date(venc.year, venc.month, min(dia_vencimento, max_day))
 
 # ── Funções de persistência ────────────────────────────────────────────────────
 def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc, obs):
@@ -352,7 +345,6 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc,
             rows.append([pid + i, did, i + 1, n_parc, vp,
                          venc.strftime("%Y-%m-%d"), "pendente", desc, cartao])
         ws_p.append_rows(rows)
-    # P-02 · Invalidação seletiva: só limpa despesas e parcelas
     carregar_despesas.clear()
     carregar_parcelas.clear()
 
@@ -360,43 +352,58 @@ def salvar_parcela_manual(cartao, desc, valor_parcela, num_inicial, num_total, v
     ws_p = get_sheet("parcelas")
     pid  = next_id(ws_p)
     df_c = carregar_cartoes()
-    card_info = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
+    card_info     = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
     df_vencimento = int(card_info.iloc[0]["dia_vencimento"]) if not card_info.empty else 17
     base_date = datetime.strptime(vencimento_inicial, "%Y-%m-%d").date()
     rows = []
     for i in range(num_total - num_inicial + 1):
-        num_parcela = num_inicial + i
-        venc = add_months(base_date, i)
+        venc    = add_months(base_date, i)
         max_day = calendar.monthrange(venc.year, venc.month)[1]
-        venc = venc.replace(day=min(df_vencimento, max_day))
-        rows.append([pid + i, -1, num_parcela, num_total, valor_parcela,
+        venc    = venc.replace(day=min(df_vencimento, max_day))
+        rows.append([pid + i, -1, num_inicial + i, num_total, valor_parcela,
                      venc.strftime("%Y-%m-%d"), "pendente", desc, cartao])
     ws_p.append_rows(rows)
-    # P-02 · Só parcelas foram alteradas
     carregar_parcelas.clear()
 
 def salvar_cartao(nome, limite, dia_fechamento, dia_vencimento):
     ws = get_sheet("cartoes")
-    cid = next_id(ws)
-    ws.append_row([cid, nome, limite, dia_fechamento, dia_vencimento,
+    ws.append_row([next_id(ws), nome, limite, dia_fechamento, dia_vencimento,
                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-    # P-02 · Só cartões foram alterados
     carregar_cartoes.clear()
+
+# Item 3 · Verificar vínculos antes de excluir cartão
+def cartao_tem_vinculos(nome_cartao: str) -> dict:
+    """
+    Retorna dict com contagens de despesas e parcelas pendentes vinculadas ao cartão.
+    Usado para bloquear exclusão se houver vínculos ativos.
+    """
+    df_d = carregar_despesas()
+    df_p = carregar_parcelas()
+
+    n_despesas = 0
+    n_parcelas_pendentes = 0
+
+    if not df_d.empty and "cartao" in df_d.columns:
+        n_despesas = int((df_d["cartao"].astype(str) == nome_cartao).sum())
+
+    if not df_p.empty and "cartao" in df_p.columns:
+        mask_p = (df_p["cartao"].astype(str) == nome_cartao) & \
+                 (df_p["status"].astype(str) == "pendente")
+        n_parcelas_pendentes = int(mask_p.sum())
+
+    return {"despesas": n_despesas, "parcelas_pendentes": n_parcelas_pendentes}
 
 def excluir_cartao(cid: int):
     ws = get_sheet("cartoes")
     df = sheet_to_df(ws)
     if not df.empty:
         delete_rows_batch(ws, df[df["id"].astype(str) == str(cid)].index.tolist())
-    # P-02 · Só cartões foram alterados
     carregar_cartoes.clear()
 
 def salvar_receita(desc, valor, data, cat, obs):
     ws = get_sheet("receitas")
-    rid = next_id(ws)
-    ws.append_row([rid, desc, valor, data, cat, obs,
+    ws.append_row([next_id(ws), desc, valor, data, cat, obs,
                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-    # P-02 · Só receitas foram alteradas
     carregar_receitas.clear()
 
 def excluir_despesa(did: int):
@@ -408,7 +415,6 @@ def excluir_despesa(did: int):
     df_d = sheet_to_df(ws_d)
     if not df_d.empty:
         delete_rows_batch(ws_d, df_d[df_d["id"].astype(str) == str(did)].index.tolist())
-    # P-02 · Despesas e parcelas foram alteradas
     carregar_despesas.clear()
     carregar_parcelas.clear()
 
@@ -417,7 +423,6 @@ def excluir_receita(rid: int):
     df = sheet_to_df(ws)
     if not df.empty:
         delete_rows_batch(ws, df[df["id"].astype(str) == str(rid)].index.tolist())
-    # P-02 · Só receitas foram alteradas
     carregar_receitas.clear()
 
 def atualizar_parcela(pid: int, status: str):
@@ -425,11 +430,9 @@ def atualizar_parcela(pid: int, status: str):
     df = sheet_to_df(ws)
     for idx in df[df["id"].astype(str) == str(pid)].index.tolist():
         ws.update_cell(idx + 2, df.columns.get_loc("status") + 1, status)
-    # P-02 · Só parcelas foram alteradas
     carregar_parcelas.clear()
 
 def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
-    """Marca todas as parcelas pendentes da fatura do mês como pagas em lote."""
     ws   = get_sheet("parcelas")
     ws_d = get_sheet("despesas")
     df_p = sheet_to_df(ws)
@@ -454,7 +457,6 @@ def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
     col_idx    = df_p.columns.get_loc("status") + 1
     range_data = [{'range': gspread.utils.rowcol_to_a1(idx + 2, col_idx), 'values': [['pago']]} for idx in idxs]
     ws.batch_update(range_data)
-    # P-02 · Só parcelas foram alteradas
     carregar_parcelas.clear()
     return len(idxs)
 
@@ -469,12 +471,8 @@ st.markdown('<div class="main-header"><span style="font-size:1.6rem">💰</span>
 # ABAS
 # ══════════════════════════════════════════════════════════════════════════════
 tab_dash, tab_lanc, tab_rec, tab_lista, tab_cc, tab_cc_rec = st.tabs([
-    "📊 Dashboard",
-    "➖ Lançar Despesa",
-    "➕ Lançar Receita",
-    "☰ Despesas",
-    "💳 Cartão de Crédito",
-    "🏦 Conta Corrente",
+    "📊 Dashboard", "➖ Lançar Despesa", "➕ Lançar Receita",
+    "☰ Despesas", "💳 Cartão de Crédito", "🏦 Conta Corrente",
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -501,8 +499,8 @@ with tab_dash:
     saldo_cor  = "green" if saldo >= 0 else "red"
 
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(card_html("Receitas do mês", fmt_moeda(total_rec),  "green"), unsafe_allow_html=True)
-    with c2: st.markdown(card_html("Despesas do mês", fmt_moeda(total_desp), "red"),   unsafe_allow_html=True)
+    with c1: st.markdown(card_html("Receitas do mês", fmt_moeda(total_rec),  "green"),   unsafe_allow_html=True)
+    with c2: st.markdown(card_html("Despesas do mês", fmt_moeda(total_desp), "red"),     unsafe_allow_html=True)
     with c3: st.markdown(card_html("Saldo do mês",    fmt_moeda(saldo),      saldo_cor), unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -703,14 +701,25 @@ with tab_lista:
                 id_excluir   = int(df_filtrado.iloc[idx_sel]["id"])
                 desc_excluir = df_filtrado.iloc[idx_sel]["descricao"]
                 val_excluir  = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])
-                st.warning(f"⚠️ Despesa selecionada: **#{id_excluir} - {desc_excluir} ({val_excluir})**")
-                if st.button("🗑 Excluir despesa selecionada", type="primary", use_container_width=True):
-                    try:
-                        excluir_despesa(id_excluir)
-                        st.success(f"Despesa #{id_excluir} excluída com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao excluir: {e}")
+                st.warning(f"⚠️ Despesa selecionada: **#{id_excluir} — {desc_excluir} ({val_excluir})**")
+                st.caption("Esta ação também excluirá todas as parcelas vinculadas a esta despesa.")
+
+                # Item 2 · Confirmação explícita antes de excluir despesa
+                confirmar_d = st.checkbox(
+                    f"Confirmo a exclusão da despesa #{id_excluir}",
+                    key=f"confirmar_excl_desp_{id_excluir}"
+                )
+                if confirmar_d:
+                    if st.button("🗑 Excluir despesa", type="primary", use_container_width=True, key="btn_excl_desp"):
+                        try:
+                            excluir_despesa(id_excluir)
+                            st.success(f"Despesa #{id_excluir} excluída com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao excluir: {e}")
+                else:
+                    st.button("🗑 Excluir despesa", type="primary", use_container_width=True,
+                              disabled=True, key="btn_excl_desp_dis")
             else:
                 st.info("💡 Clique em uma linha na tabela acima para liberar as ações de exclusão.")
         else:
@@ -782,12 +791,13 @@ with tab_cc:
                     if row["status"] == "pago": return "✅ Pago"
                     if str(row["vencimento"]) < hoje: return "❌ Vencido"
                     return "⏳ Pendente"
+                df_filtrado = df_filtrado.copy()
                 df_filtrado["Status"] = df_filtrado.apply(status_label, axis=1)
 
                 cols_show = [c for c in ["id", "descricao", "cartao", "numero", "total", "valor", "vencimento", "Status"] if c in df_filtrado.columns]
                 df_show = df_filtrado[cols_show].copy()
-                df_show["valor"]     = df_show["valor"].apply(fmt_moeda)
-                df_show["vencimento"]= df_show["vencimento"].apply(converter_data_para_exibicao)
+                df_show["valor"]      = df_show["valor"].apply(fmt_moeda)
+                df_show["vencimento"] = df_show["vencimento"].apply(converter_data_para_exibicao)
                 df_show.rename(columns={"id": "ID", "descricao": "Despesa/Item", "cartao": "Cartão",
                                         "numero": "Parc.", "total": "Total", "valor": "Valor",
                                         "vencimento": "Vencimento"}, inplace=True)
@@ -802,8 +812,10 @@ with tab_cc:
                     desc_p   = df_filtrado.iloc[idx_sel]["descricao"]
                     val_p    = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])
                     status_p = df_filtrado.iloc[idx_sel]["status"]
-                    st.info(f"📋 Parcela selecionada: **#{pid_acao} - {desc_p} ({val_p})** | Status: **{status_p.upper()}**")
+                    st.info(f"📋 Parcela selecionada: **#{pid_acao} — {desc_p} ({val_p})** | Status: **{status_p.upper()}**")
                     ba2, ba3 = st.columns(2)
+                    # Baixa e estorno de parcela individual não precisam de confirmação
+                    # pois são reversíveis (estorno disponível)
                     if ba2.button("✔ Dar baixa (Marcar como Pago)", type="primary", use_container_width=True, key="btn_pago_p"):
                         try:
                             atualizar_parcela(pid_acao, "pago")
@@ -826,14 +838,27 @@ with tab_cc:
                 c_fat1, c_fat2 = st.columns([2, 1])
                 with c_fat1:
                     mes_fat = seletor_mes_ano("fatura_lote")
+
+                cartao_label = fc_cartao if fc_cartao != "Todos" else "todos os cartões"
+
+                # Item 2 · Confirmação explícita antes de baixar fatura em lote
+                confirmar_fat = st.checkbox(
+                    f"Confirmo a baixa de todas as parcelas pendentes de {mes_fat} para {cartao_label}",
+                    key="confirmar_baixa_fatura"
+                )
                 with c_fat2:
                     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                    btn_baixa_lote = st.button("💳 Baixar fatura completa do mês", type="secondary",
-                                               use_container_width=True, key="btn_baixa_lote")
-                if btn_baixa_lote:
+                    btn_baixa_lote = st.button(
+                        "💳 Baixar fatura completa do mês",
+                        type="secondary",
+                        use_container_width=True,
+                        key="btn_baixa_lote",
+                        disabled=not confirmar_fat
+                    )
+                if btn_baixa_lote and confirmar_fat:
                     try:
                         n = baixar_fatura_mes(mes_fat, fc_cartao if fc_cartao != "Todos" else None)
-                        st.success(f"Sucesso! {n} parcela(s) baixadas para o mês {mes_fat}!")
+                        st.success(f"Sucesso! {n} parcela(s) baixadas para {mes_fat}!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao baixar fatura: {e}")
@@ -885,8 +910,8 @@ with tab_cc:
                 else:
                     st.markdown(f"**Total da fatura selecionada: {fmt_moeda(float(df_detalhe['valor'].sum()))}**")
                     df_det_show = df_detalhe[["descricao", "cartao", "numero", "total", "valor", "vencimento"]].copy()
-                    df_det_show["valor"]     = df_det_show["valor"].apply(fmt_moeda)
-                    df_det_show["vencimento"]= df_det_show["vencimento"].apply(converter_data_para_exibicao)
+                    df_det_show["valor"]      = df_det_show["valor"].apply(fmt_moeda)
+                    df_det_show["vencimento"] = df_det_show["vencimento"].apply(converter_data_para_exibicao)
                     df_det_show.columns = ["Descrição/Item", "Cartão", "Parcela", "Total Parc.", "Valor", "Vencimento"]
                     st.dataframe(df_det_show, use_container_width=True, hide_index=True)
 
@@ -903,13 +928,13 @@ with tab_cc:
             desc_m = col_m2.text_input("Descrição da Compra * (ex: Compra Geladeira)")
 
             col_m3, col_m4, col_m5 = st.columns(3)
-            val_parc_m  = col_m3.text_input("Valor da Parcela (R$) *", placeholder="0,00", key="m_val")
-            parc_init_m = col_m4.selectbox("Próxima Parcela a vencer *", list(range(1, 49)), index=0, key="m_init")
-            parc_total_m= col_m5.selectbox("Total de Parcelas da Compra *", list(range(1, 49)), index=11, key="m_total")
+            val_parc_m   = col_m3.text_input("Valor da Parcela (R$) *", placeholder="0,00", key="m_val")
+            parc_init_m  = col_m4.selectbox("Próxima Parcela a vencer *", list(range(1, 49)), index=0, key="m_init")
+            parc_total_m = col_m5.selectbox("Total de Parcelas da Compra *", list(range(1, 49)), index=11, key="m_total")
 
             venc_init_m = st.columns(1)[0].date_input("Vencimento da próxima parcela a vencer *",
                                                        value=date.today(), format="DD/MM/YYYY", key="m_date")
-            obs_m    = st.text_input("Observação (opcional)", key="m_obs")
+            obs_m      = st.text_input("Observação (opcional)", key="m_obs")
             sub_manual = st.form_submit_button("✔ Salvar Parcelas Históricas", type="primary", use_container_width=True)
 
         if sub_manual:
@@ -954,18 +979,46 @@ with tab_cc:
             df_c_show.columns   = ["ID", "Nome do Cartão", "Limite de Crédito", "Dia do Fechamento", "Dia do Vencimento"]
             event_c = st.dataframe(df_c_show, use_container_width=True, hide_index=True,
                                    on_select="rerun", selection_mode="single-row", key="df_cartoes_config_list")
+
             if event_c.selection.rows:
-                idx_sel    = event_c.selection.rows[0]
-                id_cartao  = int(df_c.iloc[idx_sel]["id"])
-                nome_cartao= df_c.iloc[idx_sel]["nome"]
-                st.warning(f"⚠️ Cartão selecionado para exclusão: **#{id_cartao} - {nome_cartao}**")
-                if st.button("🗑 Excluir cartão selecionado", type="primary", use_container_width=True, key="btn_del_card"):
-                    try:
-                        excluir_cartao(id_cartao)
-                        st.success(f"Cartão '{nome_cartao}' excluído com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao excluir cartão: {e}")
+                idx_sel     = event_c.selection.rows[0]
+                id_cartao   = int(df_c.iloc[idx_sel]["id"])
+                nome_cartao = df_c.iloc[idx_sel]["nome"]
+                st.warning(f"⚠️ Cartão selecionado: **#{id_cartao} — {nome_cartao}**")
+
+                # Item 3 · Verificar vínculos antes de permitir exclusão
+                vinculos = cartao_tem_vinculos(nome_cartao)
+                tem_vinculos = vinculos["despesas"] > 0 or vinculos["parcelas_pendentes"] > 0
+
+                if tem_vinculos:
+                    msgs = []
+                    if vinculos["despesas"] > 0:
+                        msgs.append(f"{vinculos['despesas']} despesa(s) registrada(s)")
+                    if vinculos["parcelas_pendentes"] > 0:
+                        msgs.append(f"{vinculos['parcelas_pendentes']} parcela(s) pendente(s)")
+                    st.error(
+                        f"🚫 Não é possível excluir o cartão **{nome_cartao}** pois ele possui "
+                        f"{' e '.join(msgs)} vinculadas. "
+                        f"Quite ou exclua os registros antes de remover o cartão."
+                    )
+                else:
+                    # Item 2 · Confirmação explícita antes de excluir cartão
+                    confirmar_c = st.checkbox(
+                        f"Confirmo a exclusão do cartão {nome_cartao}",
+                        key=f"confirmar_excl_cartao_{id_cartao}"
+                    )
+                    if confirmar_c:
+                        if st.button("🗑 Excluir cartão", type="primary",
+                                     use_container_width=True, key="btn_del_card"):
+                            try:
+                                excluir_cartao(id_cartao)
+                                st.success(f"Cartão '{nome_cartao}' excluído com sucesso!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro ao excluir cartão: {e}")
+                    else:
+                        st.button("🗑 Excluir cartão", type="primary",
+                                  use_container_width=True, disabled=True, key="btn_del_card_dis")
             else:
                 st.info("💡 Clique em um cartão na tabela acima para liberar as opções de exclusão.")
 
@@ -973,8 +1026,8 @@ with tab_cc:
         st.markdown("##### Cadastrar Novo Cartão")
         with st.form("form_cadastro_cartao", clear_on_submit=True):
             col_nc1, col_nc2 = st.columns(2)
-            nome_nc    = col_nc1.text_input("Nome do Cartão * (ex: Nubank Platinum)")
-            limite_nc  = col_nc2.text_input("Limite de Crédito (R$) *", placeholder="0,00", key="nc_limit")
+            nome_nc   = col_nc1.text_input("Nome do Cartão * (ex: Nubank Platinum)")
+            limite_nc = col_nc2.text_input("Limite de Crédito (R$) *", placeholder="0,00", key="nc_limit")
             col_nc3, col_nc4 = st.columns(2)
             fechamento_nc = col_nc3.selectbox("Dia do Fechamento da Fatura *", list(range(1, 32)), index=4,  key="nc_fech")
             vencimento_nc = col_nc4.selectbox("Dia do Vencimento da Fatura *", list(range(1, 32)), index=11, key="nc_venc")
@@ -1066,14 +1119,24 @@ with tab_cc_rec:
             desc_sel = mov_sel["Descrição"]
             val_sel  = fmt_moeda(abs(mov_sel["Valor"]))
             if tipo_sel == "rec":
-                st.warning(f"⚠️ Receita selecionada: **#{id_sel} - {desc_sel} ({val_sel})**")
-                if st.button("🗑 Excluir receita selecionada", type="primary", use_container_width=True):
-                    try:
-                        excluir_receita(id_sel)
-                        st.success(f"Receita #{id_sel} excluída!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao excluir: {e}")
+                st.warning(f"⚠️ Receita selecionada: **#{id_sel} — {desc_sel} ({val_sel})**")
+
+                # Item 2 · Confirmação explícita antes de excluir receita
+                confirmar_r = st.checkbox(
+                    f"Confirmo a exclusão da receita #{id_sel}",
+                    key=f"confirmar_excl_rec_{id_sel}"
+                )
+                if confirmar_r:
+                    if st.button("🗑 Excluir receita", type="primary", use_container_width=True, key="btn_excl_rec"):
+                        try:
+                            excluir_receita(id_sel)
+                            st.success(f"Receita #{id_sel} excluída!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao excluir: {e}")
+                else:
+                    st.button("🗑 Excluir receita", type="primary", use_container_width=True,
+                              disabled=True, key="btn_excl_rec_dis")
             else:
                 st.info(f"ℹ️ O lançamento selecionado é uma **Despesa** (#{id_sel}). Para excluí-la, utilize a aba **☰ Despesas**.")
         else:
