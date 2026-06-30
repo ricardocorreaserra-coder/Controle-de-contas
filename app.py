@@ -4,7 +4,8 @@ Uso: streamlit run app.py
 """
 
 import html as _html
-import calendar                          # A-04 · import movido para o topo
+import calendar
+import re
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -12,7 +13,6 @@ import plotly.graph_objects as go
 from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
-import json
 
 # ── Configuração da página ─────────────────────────────────────────────────────
 st.set_page_config(
@@ -57,6 +57,11 @@ st.markdown("""
         border: 1px solid #e2e8f0;
         box-shadow: 0 4px 24px rgba(0,0,0,0.07);
     }
+    .plan-banner {
+        background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a;
+        padding: 0.75rem 1rem; border-radius: 10px; margin-bottom: 1rem;
+        font-size: 0.92rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -66,6 +71,8 @@ st.markdown("""
 def verificar_autenticacao():
     if "autenticado" not in st.session_state:
         st.session_state["autenticado"] = False
+    if "tentativas_login" not in st.session_state:
+        st.session_state["tentativas_login"] = 0
 
     if not st.session_state["autenticado"]:
         st.markdown("""
@@ -76,22 +83,31 @@ def verificar_autenticacao():
         </div>
         """, unsafe_allow_html=True)
 
+        # B-01 · Limite simples de tentativas para dificultar força bruta
+        bloqueado = st.session_state["tentativas_login"] >= 5
+
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            senha = st.text_input(
-                "Senha", type="password",
-                label_visibility="collapsed",
-                placeholder="Digite a senha..."
-            )
-            if st.button("Entrar", use_container_width=True, type="primary"):
-                senha_correta = st.secrets.get("APP_PASSWORD", "")
-                if senha_correta and senha == senha_correta:
-                    st.session_state["autenticado"] = True
-                    st.rerun()
-                elif not senha_correta:
-                    st.error("APP_PASSWORD não configurada nos secrets.")
-                else:
-                    st.error("Senha incorreta.")
+            if bloqueado:
+                st.error("Muitas tentativas incorretas. Recarregue a página para tentar novamente.")
+            else:
+                senha = st.text_input(
+                    "Senha", type="password",
+                    label_visibility="collapsed",
+                    placeholder="Digite a senha..."
+                )
+                if st.button("Entrar", use_container_width=True, type="primary"):
+                    senha_correta = st.secrets.get("APP_PASSWORD", "")
+                    if senha_correta and senha == senha_correta:
+                        st.session_state["autenticado"] = True
+                        st.session_state["tentativas_login"] = 0
+                        st.rerun()
+                    elif not senha_correta:
+                        st.error("APP_PASSWORD não configurada nos secrets.")
+                    else:
+                        st.session_state["tentativas_login"] += 1
+                        restantes = 5 - st.session_state["tentativas_login"]
+                        st.error(f"Senha incorreta. Tentativas restantes: {max(restantes, 0)}.")
         st.stop()
 
 verificar_autenticacao()
@@ -106,14 +122,21 @@ MESES_PT = {
 def fmt_mes_pt(dt: date) -> str:
     return f"{MESES_PT[dt.month]}/{str(dt.year)[2:]}"
 
+def fmt_mes_str_pt(mes_str: str) -> str:
+    """Converte 'YYYY-MM' em 'Mmm/AA'."""
+    try:
+        ano, mes = mes_str.split("-")
+        return f"{MESES_PT[int(mes)]}/{ano[2:]}"
+    except Exception:
+        return mes_str
+
 # ── Constantes ─────────────────────────────────────────────────────────────────
 PAGAMENTOS   = ["Cartão de crédito", "Débito", "Pix", "Vale alimentação"]
 CAT_DESP     = ["Alimentação", "Transporte", "Saúde", "Moradia", "Lazer",
                  "Educação", "Vestuário", "Outros"]
 CAT_REC      = ["Salário", "Freelance", "Investimentos", "Aluguel recebido", "Outros"]
-CARTOES      = ["Nubank", "Itaú", "Bradesco", "Inter", "Santander", "Outro"]
-DIAS_VENC    = [1, 5, 7, 10, 15, 20, 25, 28]
 PARCELAS_OPT = [1, 2, 3, 4, 5, 6, 10, 12, 18, 24]
+DIA_VENCIMENTO_PADRAO = 10  # usado apenas se um cartão referenciado não for encontrado no cadastro
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def fmt_moeda(v):
@@ -121,6 +144,23 @@ def fmt_moeda(v):
         return "R$ {:,.2f}".format(float(v)).replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "R$ 0,00"
+
+# B-02 · Parser de valor robusto: aceita tanto "1.234,56" (BR) quanto "1234.56" (US)
+def parse_valor(texto: str) -> float:
+    if texto is None:
+        raise ValueError("valor vazio")
+    t = str(texto).strip()
+    if not t:
+        raise ValueError("valor vazio")
+    t = re.sub(r"[^0-9.,-]", "", t)
+    if "," in t and "." in t:
+        if t.rfind(",") > t.rfind("."):
+            t = t.replace(".", "").replace(",", ".")
+        else:
+            t = t.replace(",", "")
+    elif "," in t:
+        t = t.replace(".", "").replace(",", ".")
+    return float(t)
 
 def add_months(dt: date, months: int) -> date:
     m = dt.month - 1 + months
@@ -163,11 +203,41 @@ def seletor_mes_ano(key_prefix: str):
                        index=hoje.month - 1, key=f"{key_prefix}_mes")
     return f"{ano}-{mes:02d}"
 
+def proximos_12_meses() -> list:
+    """Retorna ['YYYY-MM', ...] para os 12 meses a partir do mês seguinte ao atual."""
+    hoje = date.today()
+    base = date(hoje.year, hoje.month, 1)
+    return [add_months(base, i).strftime("%Y-%m") for i in range(1, 13)]
+
+def mes_ativo_recorrencia(mes: str, data_inicio: date, data_fim) -> bool:
+    """Verifica se um lançamento recorrente está ativo em determinado mês (YYYY-MM)."""
+    if mes < data_inicio.strftime("%Y-%m"):
+        return False
+    fim_str = str(data_fim).strip() if data_fim not in (None, "") else ""
+    if fim_str:
+        fim_mes = fim_str[:7]
+        if mes > fim_mes:
+            return False
+    return True
+
 # ── Google Sheets ──────────────────────────────────────────────────────────────
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
+
+EXPECTED_HEADERS = {
+    "despesas": ["id", "descricao", "valor", "data", "local",
+                 "pagamento", "categoria", "cartao", "n_parcelas",
+                 "observacao", "criado_em", "recorrente", "recorrencia_fim"],
+    "parcelas": ["id", "despesa_id", "numero", "total",
+                 "valor", "vencimento", "status", "descricao", "cartao"],
+    "receitas": ["id", "descricao", "valor", "data",
+                 "categoria", "observacao", "criado_em", "recorrente", "recorrencia_fim"],
+    "cartoes":  ["id", "nome", "limite", "dia_fechamento", "dia_vencimento", "criado_em"],
+    "planejamento": ["id", "tipo", "descricao", "valor", "mes",
+                      "categoria", "observacao", "criado_em"],
+}
 
 @st.cache_resource(ttl=600)
 def get_sheets_client():
@@ -180,31 +250,29 @@ def get_workbook():
     client = get_sheets_client()
     return client.open(st.secrets["SHEET_NAME"])
 
+def _migrar_headers_se_preciso(ws, nome: str):
+    """Garante que a planilha tenha todas as colunas esperadas, sem desalinhar dados existentes."""
+    esperados = EXPECTED_HEADERS.get(nome)
+    if not esperados:
+        return
+    atuais = ws.row_values(1)
+    if not atuais:
+        return
+    faltando = [h for h in esperados if h not in atuais]
+    if faltando:
+        novos_headers = atuais + faltando
+        ws.update('A1', [novos_headers])
+
 def get_sheet(name: str):
     wb = get_workbook()
     try:
         ws = wb.worksheet(name)
-        if name == "parcelas":
-            headers = ws.row_values(1)
-            if "descricao" not in headers or "cartao" not in headers:
-                new_headers = ["id", "despesa_id", "numero", "total",
-                               "valor", "vencimento", "status", "descricao", "cartao"]
-                ws.update('A1:I1', [new_headers])
+        _migrar_headers_se_preciso(ws, name)
         return ws
     except gspread.WorksheetNotFound:
         ws = wb.add_worksheet(title=name, rows=1000, cols=20)
-        headers = {
-            "despesas": ["id", "descricao", "valor", "data", "local",
-                         "pagamento", "categoria", "cartao", "n_parcelas",
-                         "observacao", "criado_em"],
-            "parcelas": ["id", "despesa_id", "numero", "total",
-                         "valor", "vencimento", "status", "descricao", "cartao"],
-            "receitas": ["id", "descricao", "valor", "data",
-                         "categoria", "observacao", "criado_em"],
-            "cartoes":  ["id", "nome", "limite", "dia_fechamento", "dia_vencimento", "criado_em"]
-        }
-        if name in headers:
-            ws.append_row(headers[name])
+        if name in EXPECTED_HEADERS:
+            ws.append_row(EXPECTED_HEADERS[name])
         if name == "cartoes":
             default_cards = [
                 [1, "Nubank",    5000,  5, 12, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
@@ -221,18 +289,8 @@ def sheet_to_df(ws) -> pd.DataFrame:
     data = ws.get_all_records()
     df = pd.DataFrame(data) if data else pd.DataFrame()
     name = ws.title
-    expected_headers = {
-        "despesas": ["id", "descricao", "valor", "data", "local",
-                     "pagamento", "categoria", "cartao", "n_parcelas",
-                     "observacao", "criado_em"],
-        "parcelas": ["id", "despesa_id", "numero", "total",
-                     "valor", "vencimento", "status", "descricao", "cartao"],
-        "receitas": ["id", "descricao", "valor", "data",
-                     "categoria", "observacao", "criado_em"],
-        "cartoes":  ["id", "nome", "limite", "dia_fechamento", "dia_vencimento", "criado_em"]
-    }
-    if name in expected_headers:
-        for col in expected_headers[name]:
+    if name in EXPECTED_HEADERS:
+        for col in EXPECTED_HEADERS[name]:
             if col not in df.columns:
                 df[col] = ""
     return df
@@ -274,6 +332,10 @@ def carregar_receitas():
 @st.cache_data(ttl=300)
 def carregar_parcelas():
     return sheet_to_df(get_sheet("parcelas"))
+
+@st.cache_data(ttl=300)
+def carregar_planejamento():
+    return sheet_to_df(get_sheet("planejamento"))
 
 def obter_nomes_cartoes() -> list:
     try:
@@ -319,14 +381,29 @@ def calcular_vencimento_parcela(data_compra: date, dia_fechamento: int, dia_venc
     max_day = calendar.monthrange(venc.year, venc.month)[1]
     return date(venc.year, venc.month, min(dia_vencimento, max_day))
 
+def valores_parcelas(valor_total: float, n_parc: int) -> list:
+    """
+    B-03 · Divide o valor total em n_parc parcelas, garantindo que a soma
+    bata exatamente com o valor total (a última parcela absorve o resto
+    do arredondamento).
+    """
+    base = round(valor_total / n_parc, 2)
+    valores = [base] * n_parc
+    diferenca = round(valor_total - base * n_parc, 2)
+    valores[-1] = round(valores[-1] + diferenca, 2)
+    return valores
+
 # ── Funções de persistência ────────────────────────────────────────────────────
-def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc, obs):
+def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
+                    recorrente=False, recorrencia_fim=None):
     ws_d = get_sheet("despesas")
     ws_p = get_sheet("parcelas")
     did  = next_id(ws_d)
     ws_d.append_row([did, desc, valor, data, local, pag, cat,
                      cartao or "", n_parc, obs,
-                     datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                     "sim" if recorrente else "nao",
+                     recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else ""])
     if pag == "Cartão de crédito":
         df_c = carregar_cartoes()
         card_info = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
@@ -334,15 +411,15 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, dia_venc,
             df_fechamento = int(card_info.iloc[0]["dia_fechamento"])
             df_vencimento = int(card_info.iloc[0]["dia_vencimento"])
         else:
-            df_fechamento = 10
-            df_vencimento = dia_venc
+            df_fechamento = DIA_VENCIMENTO_PADRAO
+            df_vencimento = DIA_VENCIMENTO_PADRAO
         pid  = next_id(ws_p)
         base = datetime.strptime(data, "%Y-%m-%d").date()
-        vp   = round(valor / n_parc, 2)
+        valores = valores_parcelas(valor, n_parc)  # B-03 · soma exata ao valor total
         rows = []
         for i in range(n_parc):
             venc = calcular_vencimento_parcela(base, df_fechamento, df_vencimento, i + 1)
-            rows.append([pid + i, did, i + 1, n_parc, vp,
+            rows.append([pid + i, did, i + 1, n_parc, valores[i],
                          venc.strftime("%Y-%m-%d"), "pendente", desc, cartao])
         ws_p.append_rows(rows)
     carregar_despesas.clear()
@@ -353,7 +430,7 @@ def salvar_parcela_manual(cartao, desc, valor_parcela, num_inicial, num_total, v
     pid  = next_id(ws_p)
     df_c = carregar_cartoes()
     card_info     = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
-    df_vencimento = int(card_info.iloc[0]["dia_vencimento"]) if not card_info.empty else 17
+    df_vencimento = int(card_info.iloc[0]["dia_vencimento"]) if not card_info.empty else DIA_VENCIMENTO_PADRAO
     base_date = datetime.strptime(vencimento_inicial, "%Y-%m-%d").date()
     rows = []
     for i in range(num_total - num_inicial + 1):
@@ -400,10 +477,12 @@ def excluir_cartao(cid: int):
         delete_rows_batch(ws, df[df["id"].astype(str) == str(cid)].index.tolist())
     carregar_cartoes.clear()
 
-def salvar_receita(desc, valor, data, cat, obs):
+def salvar_receita(desc, valor, data, cat, obs, recorrente=False, recorrencia_fim=None):
     ws = get_sheet("receitas")
     ws.append_row([next_id(ws), desc, valor, data, cat, obs,
-                   datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+                   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                   "sim" if recorrente else "nao",
+                   recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else ""])
     carregar_receitas.clear()
 
 def excluir_despesa(did: int):
@@ -424,6 +503,47 @@ def excluir_receita(rid: int):
     if not df.empty:
         delete_rows_batch(ws, df[df["id"].astype(str) == str(rid)].index.tolist())
     carregar_receitas.clear()
+
+def encerrar_recorrencia_despesa(did: int):
+    ws = get_sheet("despesas")
+    df = sheet_to_df(ws)
+    col_idx = df.columns.get_loc("recorrencia_fim") + 1
+    hoje = hoje_str()
+    for idx in df[df["id"].astype(str) == str(did)].index.tolist():
+        ws.update_cell(idx + 2, col_idx, hoje)
+    carregar_despesas.clear()
+
+def encerrar_recorrencia_receita(rid: int):
+    ws = get_sheet("receitas")
+    df = sheet_to_df(ws)
+    col_idx = df.columns.get_loc("recorrencia_fim") + 1
+    hoje = hoje_str()
+    for idx in df[df["id"].astype(str) == str(rid)].index.tolist():
+        ws.update_cell(idx + 2, col_idx, hoje)
+    carregar_receitas.clear()
+
+def salvar_planejamento(tipo, desc, valor, mes, cat, obs):
+    ws = get_sheet("planejamento")
+    ws.append_row([next_id(ws), tipo, desc, valor, mes, cat, obs,
+                   datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    carregar_planejamento.clear()
+
+def salvar_planejamento_replicado(tipo, desc, valor, meses, cat, obs):
+    ws = get_sheet("planejamento")
+    pid = next_id(ws)
+    rows = []
+    for i, mes in enumerate(meses):
+        rows.append([pid + i, tipo, desc, valor, mes, cat, obs,
+                     datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    ws.append_rows(rows)
+    carregar_planejamento.clear()
+
+def excluir_planejamento(pid: int):
+    ws = get_sheet("planejamento")
+    df = sheet_to_df(ws)
+    if not df.empty:
+        delete_rows_batch(ws, df[df["id"].astype(str) == str(pid)].index.tolist())
+    carregar_planejamento.clear()
 
 def atualizar_parcela(pid: int, status: str):
     ws = get_sheet("parcelas")
@@ -460,6 +580,120 @@ def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
     carregar_parcelas.clear()
     return len(idxs)
 
+# ── Projeção de 12 meses ────────────────────────────────────────────────────────
+@st.cache_data(ttl=300)
+def montar_panorama_12_meses():
+    """
+    Consolida, mês a mês (12 meses à frente), todas as fontes de previsão:
+    parcelas de cartão pendentes, despesas/receitas recorrentes, despesas/receitas
+    avulsas futuras e lançamentos manuais da aba 'planejamento'.
+
+    Importante: despesas pagas no cartão de crédito NÃO entram aqui como "despesa avulsa"
+    (já estão representadas via parcelas), evitando contagem duplicada.
+    """
+    meses = proximos_12_meses()
+
+    df_p  = carregar_parcelas()
+    df_d  = carregar_despesas()
+    df_r  = carregar_receitas()
+    df_pl = carregar_planejamento()
+
+    linhas = []
+
+    # 1) Parcelas de cartão pendentes
+    if not df_p.empty:
+        df_pend = df_p[df_p["status"] == "pendente"].copy()
+        df_pend["valor"] = pd.to_numeric(df_pend["valor"], errors="coerce").fillna(0.0)
+        for _, row in df_pend.iterrows():
+            mes = str(row["vencimento"])[:7]
+            if mes in meses:
+                linhas.append({"mes": mes, "tipo": "despesa", "origem": "Cartão",
+                                "descricao": row.get("descricao", ""), "valor": float(row["valor"]),
+                                "categoria": "Cartão de crédito"})
+
+    # 2) Despesas recorrentes (exceto cartão, que já entra via parcelas) e avulsas futuras
+    if not df_d.empty:
+        df_d2 = df_d.copy()
+        df_d2["valor"] = pd.to_numeric(df_d2["valor"], errors="coerce").fillna(0.0)
+        is_recorrente = df_d2.get("recorrente", "").astype(str).str.lower() == "sim"
+        nao_cartao    = df_d2["pagamento"] != "Cartão de crédito"
+
+        for _, row in df_d2[is_recorrente & nao_cartao].iterrows():
+            try:
+                data_ini = datetime.strptime(str(row["data"]), "%Y-%m-%d").date()
+            except Exception:
+                continue
+            for mes in meses:
+                if mes_ativo_recorrencia(mes, data_ini, row.get("recorrencia_fim")):
+                    linhas.append({"mes": mes, "tipo": "despesa", "origem": "Recorrente",
+                                    "descricao": row["descricao"], "valor": float(row["valor"]),
+                                    "categoria": row.get("categoria", "")})
+
+        # Avulsas futuras (não recorrentes, não cartão, com data num dos próximos 12 meses)
+        avulsas_futuras = df_d2[(~is_recorrente) & nao_cartao &
+                                 (df_d2["data"].astype(str).str.slice(0, 7).isin(meses))]
+        for _, row in avulsas_futuras.iterrows():
+            mes = str(row["data"])[:7]
+            linhas.append({"mes": mes, "tipo": "despesa", "origem": "Avulsa futura",
+                            "descricao": row["descricao"], "valor": float(row["valor"]),
+                            "categoria": row.get("categoria", "")})
+
+    # 3) Receitas recorrentes e avulsas futuras
+    if not df_r.empty:
+        df_r2 = df_r.copy()
+        df_r2["valor"] = pd.to_numeric(df_r2["valor"], errors="coerce").fillna(0.0)
+        is_recorrente_r = df_r2.get("recorrente", "").astype(str).str.lower() == "sim"
+
+        for _, row in df_r2[is_recorrente_r].iterrows():
+            try:
+                data_ini = datetime.strptime(str(row["data"]), "%Y-%m-%d").date()
+            except Exception:
+                continue
+            for mes in meses:
+                if mes_ativo_recorrencia(mes, data_ini, row.get("recorrencia_fim")):
+                    linhas.append({"mes": mes, "tipo": "receita", "origem": "Recorrente",
+                                    "descricao": row["descricao"], "valor": float(row["valor"]),
+                                    "categoria": row.get("categoria", "")})
+
+        avulsas_futuras_r = df_r2[(~is_recorrente_r) &
+                                   (df_r2["data"].astype(str).str.slice(0, 7).isin(meses))]
+        for _, row in avulsas_futuras_r.iterrows():
+            mes = str(row["data"])[:7]
+            linhas.append({"mes": mes, "tipo": "receita", "origem": "Avulsa futura",
+                            "descricao": row["descricao"], "valor": float(row["valor"]),
+                            "categoria": row.get("categoria", "")})
+
+    # 4) Planejamento manual
+    if not df_pl.empty:
+        df_pl2 = df_pl.copy()
+        df_pl2["valor"] = pd.to_numeric(df_pl2["valor"], errors="coerce").fillna(0.0)
+        df_pl2 = df_pl2[df_pl2["mes"].astype(str).isin(meses)]
+        for _, row in df_pl2.iterrows():
+            linhas.append({"mes": row["mes"], "tipo": row["tipo"], "origem": "Planejamento manual",
+                            "descricao": row["descricao"], "valor": float(row["valor"]),
+                            "categoria": row.get("categoria", "")})
+
+    df_linhas = pd.DataFrame(linhas, columns=["mes", "tipo", "origem", "descricao", "valor", "categoria"])
+
+    # Resumo: tabela mês × (receitas, despesas por origem, saldo)
+    resumo_rows = []
+    for mes in meses:
+        sub = df_linhas[df_linhas["mes"] == mes]
+        receitas      = float(sub[sub["tipo"] == "receita"]["valor"].sum())
+        desp_cartao   = float(sub[(sub["tipo"] == "despesa") & (sub["origem"] == "Cartão")]["valor"].sum())
+        desp_recor    = float(sub[(sub["tipo"] == "despesa") & (sub["origem"] == "Recorrente")]["valor"].sum())
+        desp_outras   = float(sub[(sub["tipo"] == "despesa") &
+                                   (~sub["origem"].isin(["Cartão", "Recorrente"]))]["valor"].sum())
+        despesas_tot  = desp_cartao + desp_recor + desp_outras
+        resumo_rows.append({
+            "mes": mes, "Mês": fmt_mes_str_pt(mes),
+            "Receitas": receitas, "Cartão": desp_cartao, "Recorrentes": desp_recor,
+            "Outras desp.": desp_outras, "Despesas (total)": despesas_tot,
+            "Saldo projetado": receitas - despesas_tot,
+        })
+    df_resumo = pd.DataFrame(resumo_rows)
+    return df_linhas, df_resumo
+
 # ══════════════════════════════════════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════════════════════════════════════
@@ -470,9 +704,10 @@ st.markdown('<div class="main-header"><span style="font-size:1.6rem">💰</span>
 # ══════════════════════════════════════════════════════════════════════════════
 # ABAS
 # ══════════════════════════════════════════════════════════════════════════════
-tab_dash, tab_lanc, tab_rec, tab_lista, tab_cc, tab_cc_rec = st.tabs([
+tab_dash, tab_lanc, tab_rec, tab_lista, tab_cc, tab_cc_rec, tab_plan = st.tabs([
     "📊 Dashboard", "➖ Lançar Despesa", "➕ Lançar Receita",
     "☰ Despesas", "💳 Cartão de Crédito", "🏦 Conta Corrente",
+    "🔮 Planejamento 12 Meses",
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -570,12 +805,23 @@ with tab_lanc:
         cat = c5.selectbox("Categoria", [""] + CAT_DESP)
         pag = c6.selectbox("Modo de pagamento *", [""] + PAGAMENTOS)
 
-        cartao = None; n_parc = 1; dia_venc = 10
+        cartao = None; n_parc = 1
         if pag == "Cartão de crédito":
             st.markdown("##### 💳 Cartão de Crédito")
             cc1, cc2 = st.columns(2)
             cartao = cc1.selectbox("Cartão", obter_nomes_cartoes())
             n_parc = cc2.selectbox("Parcelas", PARCELAS_OPT)
+
+        st.markdown("##### 🔁 Recorrência")
+        recorrente = st.checkbox("Despesa recorrente (mensal)", key="desp_recorrente")
+        if recorrente and pag == "Cartão de crédito":
+            st.warning("Compras no cartão já geram parcelas automáticas. "
+                       "Use recorrente para débito, Pix, vale alimentação etc.")
+        rec_fim = None
+        if recorrente:
+            usar_fim = st.checkbox("Definir data de encerramento da recorrência", key="desp_rec_fim_chk")
+            if usar_fim:
+                rec_fim = st.date_input("Encerrar recorrência em", value=date.today(), format="DD/MM/YYYY", key="desp_rec_fim")
 
         obs = st.text_input("Observação (opcional)")
         submitted = st.form_submit_button("✔ Salvar despesa", type="primary", use_container_width=True)
@@ -585,7 +831,7 @@ with tab_lanc:
         if not desc.strip():
             erros.append("Preencha a descrição.")
         try:
-            v = float(valor.replace(".", "").replace(",", "."))
+            v = parse_valor(valor)
             if not (0 < v <= 1_000_000):
                 erros.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
         except Exception:
@@ -603,7 +849,8 @@ with tab_lanc:
                 st.session_state["salvando_despesa"] = True
                 try:
                     salvar_despesa(desc.strip(), v, data_d.strftime("%Y-%m-%d"),
-                                   local.strip(), pag, cat, cartao, n_parc, dia_venc, obs.strip())
+                                   local.strip(), pag, cat, cartao, n_parc, obs.strip(),
+                                   recorrente=recorrente, recorrencia_fim=rec_fim)
                     st.success("✅ Despesa lançada com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao salvar despesa: {e}")
@@ -623,6 +870,15 @@ with tab_rec:
         r3, r4 = st.columns(2)
         rdata = r3.date_input("Data *", value=date.today(), format="DD/MM/YYYY")
         rcat  = r4.selectbox("Categoria", [""] + CAT_REC)
+
+        st.markdown("##### 🔁 Recorrência")
+        rrecorrente = st.checkbox("Receita recorrente (mensal)", key="rec_recorrente")
+        rrec_fim = None
+        if rrecorrente:
+            rusar_fim = st.checkbox("Definir data de encerramento da recorrência", key="rec_rec_fim_chk")
+            if rusar_fim:
+                rrec_fim = st.date_input("Encerrar recorrência em", value=date.today(), format="DD/MM/YYYY", key="rec_rec_fim")
+
         robs  = st.text_input("Observação (opcional)")
 
         rsubmit = st.form_submit_button("✔ Salvar receita", type="primary", use_container_width=True)
@@ -632,7 +888,7 @@ with tab_rec:
         if not rdesc.strip():
             erros.append("Preencha a descrição.")
         try:
-            rv = float(rvalor.replace(".", "").replace(",", "."))
+            rv = parse_valor(rvalor)
             if not (0 < rv <= 1_000_000):
                 erros.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
         except Exception:
@@ -647,7 +903,8 @@ with tab_rec:
             else:
                 st.session_state["salvando_receita"] = True
                 try:
-                    salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip())
+                    salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip(),
+                                   recorrente=rrecorrente, recorrencia_fim=rrec_fim)
                     st.success("✅ Receita lançada com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao salvar receita: {e}")
@@ -942,7 +1199,7 @@ with tab_cc:
             if not desc_m.strip(): erros_m.append("Preencha a descrição.")
             if parc_init_m > parc_total_m: erros_m.append("A próxima parcela não pode ser maior que o total.")
             try:
-                v_p = float(val_parc_m.replace(".", "").replace(",", "."))
+                v_p = parse_valor(val_parc_m)
                 if not (0 < v_p <= 1_000_000):
                     erros_m.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
             except Exception:
@@ -1037,7 +1294,7 @@ with tab_cc:
             erros_nc = []
             if not nome_nc.strip(): erros_nc.append("Preencha o nome do cartão.")
             try:
-                lim = float(limite_nc.replace(".", "").replace(",", "."))
+                lim = parse_valor(limite_nc)
                 if lim < 0: erros_nc.append("Limite não pode ser negativo.")
             except Exception:
                 erros_nc.append("Limite de crédito inválido.")
@@ -1143,3 +1400,255 @@ with tab_cc_rec:
             st.info("💡 Clique em um lançamento do extrato acima para opções de exclusão (disponível para Receitas).")
     else:
         st.info("Nenhum movimento para o período selecionado.")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLANEJAMENTO 12 MESES
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_plan:
+    meses_futuros = proximos_12_meses()
+    primeiro_mes_lbl = fmt_mes_str_pt(meses_futuros[0])
+    st.markdown(
+        f'<div class="plan-banner">📅 Visão de <b>planejamento</b>: próximos 12 meses a partir de '
+        f'{primeiro_mes_lbl}. Diferente do Dashboard, que mostra o mês corrente/passado.</div>',
+        unsafe_allow_html=True
+    )
+
+    sub_plan_panorama, sub_plan_futuros, sub_plan_recorrentes = st.tabs([
+        "📈 Panorama 12 Meses", "🗓️ Lançamentos Futuros", "🔁 Recorrentes"
+    ])
+
+    # ── Panorama ──
+    with sub_plan_panorama:
+        df_linhas, df_resumo = montar_panorama_12_meses()
+
+        sem_dados = df_resumo.empty or (
+            df_resumo["Receitas"].eq(0).all() and df_resumo["Despesas (total)"].eq(0).all()
+        )
+        if sem_dados:
+            st.info("Nenhuma projeção disponível ainda. Cadastre despesas/receitas recorrentes, "
+                    "parcelas de cartão ou lançamentos no Planejamento para ver o panorama aqui.")
+        else:
+            st.markdown("##### Resumo mês a mês")
+            df_resumo_show = df_resumo[["Mês", "Receitas", "Cartão", "Recorrentes",
+                                         "Outras desp.", "Despesas (total)", "Saldo projetado"]].copy()
+            for col in ["Receitas", "Cartão", "Recorrentes", "Outras desp.", "Despesas (total)", "Saldo projetado"]:
+                df_resumo_show[col] = df_resumo_show[col].apply(fmt_moeda)
+            st.dataframe(df_resumo_show, use_container_width=True, hide_index=True)
+
+            st.caption("Saldo projetado considera fluxo de caixa por vencimento (cartão) e por data de "
+                       "competência (recorrentes/avulsas/planejamento manual).")
+
+            fig_plan = go.Figure()
+            fig_plan.add_bar(x=df_resumo["Mês"], y=df_resumo["Cartão"], name="Cartão", marker_color="#d97706")
+            fig_plan.add_bar(x=df_resumo["Mês"], y=df_resumo["Recorrentes"], name="Recorrentes", marker_color="#dc2626")
+            fig_plan.add_bar(x=df_resumo["Mês"], y=df_resumo["Outras desp."], name="Outras despesas", marker_color="#7c3aed")
+            fig_plan.add_trace(go.Scatter(x=df_resumo["Mês"], y=df_resumo["Receitas"], name="Receitas",
+                                          mode="lines+markers", line=dict(color="#16a34a", width=3)))
+            fig_plan.update_layout(barmode="stack", template="plotly_white", separators=',.',
+                                   height=350, legend=dict(orientation="h", y=-0.2),
+                                   margin=dict(t=10, b=10, l=10, r=10))
+            st.plotly_chart(fig_plan, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("##### 🔍 Detalhamento por mês")
+            mes_det_sel = st.selectbox("Selecione o mês", meses_futuros,
+                                       format_func=fmt_mes_str_pt, key="plan_mes_det")
+            df_mes_det = df_linhas[df_linhas["mes"] == mes_det_sel].copy()
+            if df_mes_det.empty:
+                st.info("Nenhum lançamento projetado para este mês.")
+            else:
+                df_mes_det["valor"] = df_mes_det["valor"].apply(fmt_moeda)
+                df_mes_det = df_mes_det[["tipo", "origem", "descricao", "categoria", "valor"]]
+                df_mes_det.columns = ["Tipo", "Origem", "Descrição", "Categoria", "Valor"]
+                st.dataframe(df_mes_det, use_container_width=True, hide_index=True)
+
+    # ── Lançamentos Futuros (planejamento manual) ──
+    with sub_plan_futuros:
+        st.subheader("Lançar item de Planejamento")
+        st.caption("Use para itens pontuais que não são recorrentes nem parcelas "
+                   "(ex.: IPTU em março, 13º salário em dezembro).")
+
+        with st.form("form_planejamento", clear_on_submit=True):
+            p1, p2 = st.columns([1, 3])
+            tipo_pl = p1.selectbox("Tipo", ["Despesa", "Receita"])
+            desc_pl = p2.text_input("Descrição *")
+
+            p3, p4 = st.columns(2)
+            valor_pl = p3.text_input("Valor (R$) *", placeholder="0,00", key="pl_valor")
+            cat_opcoes = CAT_DESP if tipo_pl == "Despesa" else CAT_REC
+            cat_pl = p4.selectbox("Categoria", [""] + cat_opcoes, key="pl_cat")
+
+            mes_pl = st.selectbox("Mês de competência *", meses_futuros,
+                                  format_func=fmt_mes_str_pt, key="pl_mes")
+            replicar_pl = st.checkbox("Replicar este lançamento para os 12 meses", key="pl_replicar")
+            obs_pl = st.text_input("Observação (opcional)", key="pl_obs")
+
+            sub_pl = st.form_submit_button("✔ Salvar Planejamento", type="primary", use_container_width=True)
+
+        if sub_pl:
+            erros_pl = []
+            if not desc_pl.strip(): erros_pl.append("Preencha a descrição.")
+            try:
+                v_pl = parse_valor(valor_pl)
+                if not (0 < v_pl <= 1_000_000):
+                    erros_pl.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
+            except Exception:
+                erros_pl.append("Valor inválido.")
+                v_pl = 0
+
+            if erros_pl:
+                for e in erros_pl: st.error(e)
+            else:
+                try:
+                    tipo_db = "despesa" if tipo_pl == "Despesa" else "receita"
+                    if replicar_pl:
+                        salvar_planejamento_replicado(tipo_db, desc_pl.strip(), v_pl, meses_futuros, cat_pl, obs_pl.strip())
+                        st.success(f"Lançamento '{desc_pl}' replicado para os 12 meses!")
+                    else:
+                        salvar_planejamento(tipo_db, desc_pl.strip(), v_pl, mes_pl, cat_pl, obs_pl.strip())
+                        st.success(f"Lançamento '{desc_pl}' adicionado ao planejamento de {fmt_mes_str_pt(mes_pl)}!")
+                    montar_panorama_12_meses.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar planejamento: {e}")
+
+        st.markdown("---")
+        st.markdown("##### Itens de Planejamento Cadastrados")
+        df_pl_list = carregar_planejamento()
+        if df_pl_list.empty:
+            st.info("Nenhum item de planejamento cadastrado.")
+        else:
+            df_pl_list = df_pl_list.copy()
+            df_pl_list["valor"] = pd.to_numeric(df_pl_list["valor"], errors='coerce').fillna(0.0)
+            df_pl_show = df_pl_list[["id", "tipo", "descricao", "valor", "mes", "categoria", "observacao"]].copy()
+            df_pl_show["valor"] = df_pl_show["valor"].apply(fmt_moeda)
+            df_pl_show["mes"]   = df_pl_show["mes"].apply(fmt_mes_str_pt)
+            df_pl_show.columns  = ["ID", "Tipo", "Descrição", "Valor", "Mês", "Categoria", "Obs"]
+
+            event_pl = st.dataframe(df_pl_show, use_container_width=True, hide_index=True,
+                                    on_select="rerun", selection_mode="single-row", key="df_planejamento_list")
+            if event_pl.selection.rows:
+                idx_sel = event_pl.selection.rows[0]
+                id_pl   = int(df_pl_list.iloc[idx_sel]["id"])
+                desc_pl_sel = df_pl_list.iloc[idx_sel]["descricao"]
+                confirmar_pl = st.checkbox(f"Confirmo a exclusão do item de planejamento #{id_pl} — {desc_pl_sel}",
+                                           key=f"confirmar_excl_pl_{id_pl}")
+                if confirmar_pl:
+                    if st.button("🗑 Excluir item de planejamento", type="primary",
+                                 use_container_width=True, key="btn_excl_pl"):
+                        try:
+                            excluir_planejamento(id_pl)
+                            montar_panorama_12_meses.clear()
+                            st.success(f"Item #{id_pl} excluído!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao excluir: {e}")
+                else:
+                    st.button("🗑 Excluir item de planejamento", type="primary",
+                              use_container_width=True, disabled=True, key="btn_excl_pl_dis")
+            else:
+                st.info("💡 Clique em um item na tabela acima para liberar a exclusão.")
+
+    # ── Recorrentes ──
+    with sub_plan_recorrentes:
+        st.subheader("Despesas e Receitas Recorrentes")
+
+        df_d_rec = carregar_despesas()
+        df_r_rec = carregar_receitas()
+
+        st.markdown("##### Despesas recorrentes")
+        if df_d_rec.empty or "recorrente" not in df_d_rec.columns:
+            st.info("Nenhuma despesa recorrente cadastrada.")
+        else:
+            df_d_rec_f = df_d_rec[df_d_rec["recorrente"].astype(str).str.lower() == "sim"].copy()
+            if df_d_rec_f.empty:
+                st.info("Nenhuma despesa recorrente cadastrada.")
+            else:
+                df_d_rec_f["valor"] = pd.to_numeric(df_d_rec_f["valor"], errors='coerce').fillna(0.0)
+                df_d_rec_show = df_d_rec_f[["id", "descricao", "valor", "data", "pagamento",
+                                            "categoria", "recorrencia_fim"]].copy()
+                df_d_rec_show["valor"] = df_d_rec_show["valor"].apply(fmt_moeda)
+                df_d_rec_show["data"]  = df_d_rec_show["data"].apply(converter_data_para_exibicao)
+                df_d_rec_show["recorrencia_fim"] = df_d_rec_show["recorrencia_fim"].apply(
+                    lambda x: converter_data_para_exibicao(x) if str(x).strip() else "— ativa —")
+                df_d_rec_show.columns = ["ID", "Descrição", "Valor", "Início", "Pagamento", "Categoria", "Fim da Recorrência"]
+
+                event_dr = st.dataframe(df_d_rec_show, use_container_width=True, hide_index=True,
+                                        on_select="rerun", selection_mode="single-row", key="df_desp_recorrentes")
+                if event_dr.selection.rows:
+                    idx_sel = event_dr.selection.rows[0]
+                    id_dr   = int(df_d_rec_f.iloc[idx_sel]["id"])
+                    desc_dr = df_d_rec_f.iloc[idx_sel]["descricao"]
+                    if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_dr", use_container_width=True):
+                        try:
+                            encerrar_recorrencia_despesa(id_dr)
+                            montar_panorama_12_meses.clear()
+                            st.success(f"Recorrência de '{desc_dr}' encerrada a partir de hoje.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
+
+        st.markdown("---")
+        st.markdown("##### Receitas recorrentes")
+        if df_r_rec.empty or "recorrente" not in df_r_rec.columns:
+            st.info("Nenhuma receita recorrente cadastrada.")
+        else:
+            df_r_rec_f = df_r_rec[df_r_rec["recorrente"].astype(str).str.lower() == "sim"].copy()
+            if df_r_rec_f.empty:
+                st.info("Nenhuma receita recorrente cadastrada.")
+            else:
+                df_r_rec_f["valor"] = pd.to_numeric(df_r_rec_f["valor"], errors='coerce').fillna(0.0)
+                df_r_rec_show = df_r_rec_f[["id", "descricao", "valor", "data", "categoria", "recorrencia_fim"]].copy()
+                df_r_rec_show["valor"] = df_r_rec_show["valor"].apply(fmt_moeda)
+                df_r_rec_show["data"]  = df_r_rec_show["data"].apply(converter_data_para_exibicao)
+                df_r_rec_show["recorrencia_fim"] = df_r_rec_show["recorrencia_fim"].apply(
+                    lambda x: converter_data_para_exibicao(x) if str(x).strip() else "— ativa —")
+                df_r_rec_show.columns = ["ID", "Descrição", "Valor", "Início", "Categoria", "Fim da Recorrência"]
+
+                event_rr = st.dataframe(df_r_rec_show, use_container_width=True, hide_index=True,
+                                        on_select="rerun", selection_mode="single-row", key="df_rec_recorrentes")
+                if event_rr.selection.rows:
+                    idx_sel = event_rr.selection.rows[0]
+                    id_rr   = int(df_r_rec_f.iloc[idx_sel]["id"])
+                    desc_rr = df_r_rec_f.iloc[idx_sel]["descricao"]
+                    if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_rr", use_container_width=True):
+                        try:
+                            encerrar_recorrencia_receita(id_rr)
+                            montar_panorama_12_meses.clear()
+                            st.success(f"Recorrência de '{desc_rr}' encerrada a partir de hoje.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
+
+        st.markdown("---")
+        st.markdown("##### Cadastro rápido de receita recorrente")
+        with st.form("form_receita_recorrente_rapida", clear_on_submit=True):
+            qr1, qr2 = st.columns([3, 1])
+            qdesc = qr1.text_input("Descrição * (ex: Salário)")
+            qvalor = qr2.text_input("Valor (R$) *", placeholder="0,00", key="qr_valor")
+            qr3, qr4 = st.columns(2)
+            qdata = qr3.date_input("Início *", value=date.today(), format="DD/MM/YYYY", key="qr_data")
+            qcat  = qr4.selectbox("Categoria", [""] + CAT_REC, key="qr_cat")
+            qsubmit = st.form_submit_button("✔ Cadastrar receita recorrente", type="primary", use_container_width=True)
+
+        if qsubmit:
+            erros_qr = []
+            if not qdesc.strip(): erros_qr.append("Preencha a descrição.")
+            try:
+                qv = parse_valor(qvalor)
+                if not (0 < qv <= 1_000_000):
+                    erros_qr.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
+            except Exception:
+                erros_qr.append("Valor inválido.")
+                qv = 0
+            if erros_qr:
+                for e in erros_qr: st.error(e)
+            else:
+                try:
+                    salvar_receita(qdesc.strip(), qv, qdata.strftime("%Y-%m-%d"), qcat, "",
+                                   recorrente=True, recorrencia_fim=None)
+                    montar_panorama_12_meses.clear()
+                    st.success(f"Receita recorrente '{qdesc}' cadastrada!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao cadastrar: {e}")
