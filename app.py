@@ -5,6 +5,7 @@ Uso: streamlit run app.py
 
 import html as _html
 import calendar
+import io
 import re
 import streamlit as st
 import pandas as pd
@@ -580,119 +581,241 @@ def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
     carregar_parcelas.clear()
     return len(idxs)
 
-# ── Projeção de 12 meses ────────────────────────────────────────────────────────
-@st.cache_data(ttl=300)
-def montar_panorama_12_meses():
-    """
-    Consolida, mês a mês (12 meses à frente), todas as fontes de previsão:
-    parcelas de cartão pendentes, despesas/receitas recorrentes, despesas/receitas
-    avulsas futuras e lançamentos manuais da aba 'planejamento'.
+# ══════════════════════════════════════════════════════════════════════════════
+# PROJEÇÃO DE 12 MESES — funções auxiliares (R-01)
+# Cada função é responsável por uma única fonte de dados, tornando o código
+# testável de forma isolada e fácil de estender com novas fontes.
+# ══════════════════════════════════════════════════════════════════════════════
 
-    Importante: despesas pagas no cartão de crédito NÃO entram aqui como "despesa avulsa"
-    (já estão representadas via parcelas), evitando contagem duplicada.
-    """
-    meses = proximos_12_meses()
+_COLS_LINHAS = ["mes", "tipo", "origem", "descricao", "valor", "categoria"]
 
-    df_p  = carregar_parcelas()
-    df_d  = carregar_despesas()
-    df_r  = carregar_receitas()
-    df_pl = carregar_planejamento()
-
+def _projetar_parcelas_cartao(df_p: pd.DataFrame, meses: list) -> list:
+    """Fonte 1: parcelas de cartão pendentes com vencimento nos próximos 12 meses."""
     linhas = []
+    if df_p.empty:
+        return linhas
+    meses_set = set(meses)
+    df_pend = df_p[df_p["status"] == "pendente"].copy()
+    df_pend["valor"] = pd.to_numeric(df_pend["valor"], errors="coerce").fillna(0.0)
+    for _, row in df_pend.iterrows():
+        mes = str(row["vencimento"])[:7]
+        if mes in meses_set:
+            linhas.append({
+                "mes": mes, "tipo": "despesa", "origem": "Cartão",
+                "descricao": str(row.get("descricao", "")),
+                "valor": float(row["valor"]), "categoria": "Cartão de crédito",
+            })
+    return linhas
 
-    # 1) Parcelas de cartão pendentes
-    if not df_p.empty:
-        df_pend = df_p[df_p["status"] == "pendente"].copy()
-        df_pend["valor"] = pd.to_numeric(df_pend["valor"], errors="coerce").fillna(0.0)
-        for _, row in df_pend.iterrows():
-            mes = str(row["vencimento"])[:7]
-            if mes in meses:
-                linhas.append({"mes": mes, "tipo": "despesa", "origem": "Cartão",
-                                "descricao": row.get("descricao", ""), "valor": float(row["valor"]),
-                                "categoria": "Cartão de crédito"})
 
-    # 2) Despesas recorrentes (exceto cartão, que já entra via parcelas) e avulsas futuras
-    if not df_d.empty:
-        df_d2 = df_d.copy()
-        df_d2["valor"] = pd.to_numeric(df_d2["valor"], errors="coerce").fillna(0.0)
-        is_recorrente = df_d2.get("recorrente", "").astype(str).str.lower() == "sim"
-        nao_cartao    = df_d2["pagamento"] != "Cartão de crédito"
+def _projetar_despesas(df_d: pd.DataFrame, meses: list) -> list:
+    """
+    Fonte 2: despesas recorrentes (não-cartão) e despesas avulsas com data futura.
+    Despesas de cartão são excluídas — já entram via _projetar_parcelas_cartao,
+    evitando contagem dupla.
+    """
+    linhas = []
+    if df_d.empty:
+        return linhas
+    meses_set = set(meses)
+    df_d2 = df_d.copy()
+    df_d2["valor"] = pd.to_numeric(df_d2["valor"], errors="coerce").fillna(0.0)
+    is_recorrente = df_d2.get("recorrente", "").astype(str).str.lower() == "sim"
+    nao_cartao    = df_d2["pagamento"] != "Cartão de crédito"
 
-        for _, row in df_d2[is_recorrente & nao_cartao].iterrows():
-            try:
-                data_ini = datetime.strptime(str(row["data"]), "%Y-%m-%d").date()
-            except Exception:
-                continue
-            for mes in meses:
-                if mes_ativo_recorrencia(mes, data_ini, row.get("recorrencia_fim")):
-                    linhas.append({"mes": mes, "tipo": "despesa", "origem": "Recorrente",
-                                    "descricao": row["descricao"], "valor": float(row["valor"]),
-                                    "categoria": row.get("categoria", "")})
+    for _, row in df_d2[is_recorrente & nao_cartao].iterrows():
+        try:
+            data_ini = datetime.strptime(str(row["data"]), "%Y-%m-%d").date()
+        except Exception:
+            continue
+        for mes in meses:
+            if mes_ativo_recorrencia(mes, data_ini, row.get("recorrencia_fim")):
+                linhas.append({
+                    "mes": mes, "tipo": "despesa", "origem": "Recorrente",
+                    "descricao": str(row["descricao"]), "valor": float(row["valor"]),
+                    "categoria": str(row.get("categoria", "")),
+                })
 
-        # Avulsas futuras (não recorrentes, não cartão, com data num dos próximos 12 meses)
-        avulsas_futuras = df_d2[(~is_recorrente) & nao_cartao &
-                                 (df_d2["data"].astype(str).str.slice(0, 7).isin(meses))]
-        for _, row in avulsas_futuras.iterrows():
-            mes = str(row["data"])[:7]
-            linhas.append({"mes": mes, "tipo": "despesa", "origem": "Avulsa futura",
-                            "descricao": row["descricao"], "valor": float(row["valor"]),
-                            "categoria": row.get("categoria", "")})
+    avulsas = df_d2[(~is_recorrente) & nao_cartao &
+                    (df_d2["data"].astype(str).str.slice(0, 7).isin(meses_set))]
+    for _, row in avulsas.iterrows():
+        linhas.append({
+            "mes": str(row["data"])[:7], "tipo": "despesa", "origem": "Avulsa futura",
+            "descricao": str(row["descricao"]), "valor": float(row["valor"]),
+            "categoria": str(row.get("categoria", "")),
+        })
+    return linhas
 
-    # 3) Receitas recorrentes e avulsas futuras
-    if not df_r.empty:
-        df_r2 = df_r.copy()
-        df_r2["valor"] = pd.to_numeric(df_r2["valor"], errors="coerce").fillna(0.0)
-        is_recorrente_r = df_r2.get("recorrente", "").astype(str).str.lower() == "sim"
 
-        for _, row in df_r2[is_recorrente_r].iterrows():
-            try:
-                data_ini = datetime.strptime(str(row["data"]), "%Y-%m-%d").date()
-            except Exception:
-                continue
-            for mes in meses:
-                if mes_ativo_recorrencia(mes, data_ini, row.get("recorrencia_fim")):
-                    linhas.append({"mes": mes, "tipo": "receita", "origem": "Recorrente",
-                                    "descricao": row["descricao"], "valor": float(row["valor"]),
-                                    "categoria": row.get("categoria", "")})
+def _projetar_receitas(df_r: pd.DataFrame, meses: list) -> list:
+    """Fonte 3: receitas recorrentes e receitas avulsas com data futura."""
+    linhas = []
+    if df_r.empty:
+        return linhas
+    meses_set = set(meses)
+    df_r2 = df_r.copy()
+    df_r2["valor"] = pd.to_numeric(df_r2["valor"], errors="coerce").fillna(0.0)
+    is_recorrente_r = df_r2.get("recorrente", "").astype(str).str.lower() == "sim"
 
-        avulsas_futuras_r = df_r2[(~is_recorrente_r) &
-                                   (df_r2["data"].astype(str).str.slice(0, 7).isin(meses))]
-        for _, row in avulsas_futuras_r.iterrows():
-            mes = str(row["data"])[:7]
-            linhas.append({"mes": mes, "tipo": "receita", "origem": "Avulsa futura",
-                            "descricao": row["descricao"], "valor": float(row["valor"]),
-                            "categoria": row.get("categoria", "")})
+    for _, row in df_r2[is_recorrente_r].iterrows():
+        try:
+            data_ini = datetime.strptime(str(row["data"]), "%Y-%m-%d").date()
+        except Exception:
+            continue
+        for mes in meses:
+            if mes_ativo_recorrencia(mes, data_ini, row.get("recorrencia_fim")):
+                linhas.append({
+                    "mes": mes, "tipo": "receita", "origem": "Recorrente",
+                    "descricao": str(row["descricao"]), "valor": float(row["valor"]),
+                    "categoria": str(row.get("categoria", "")),
+                })
 
-    # 4) Planejamento manual
-    if not df_pl.empty:
-        df_pl2 = df_pl.copy()
-        df_pl2["valor"] = pd.to_numeric(df_pl2["valor"], errors="coerce").fillna(0.0)
-        df_pl2 = df_pl2[df_pl2["mes"].astype(str).isin(meses)]
-        for _, row in df_pl2.iterrows():
-            linhas.append({"mes": row["mes"], "tipo": row["tipo"], "origem": "Planejamento manual",
-                            "descricao": row["descricao"], "valor": float(row["valor"]),
-                            "categoria": row.get("categoria", "")})
+    avulsas_r = df_r2[(~is_recorrente_r) &
+                      (df_r2["data"].astype(str).str.slice(0, 7).isin(meses_set))]
+    for _, row in avulsas_r.iterrows():
+        linhas.append({
+            "mes": str(row["data"])[:7], "tipo": "receita", "origem": "Avulsa futura",
+            "descricao": str(row["descricao"]), "valor": float(row["valor"]),
+            "categoria": str(row.get("categoria", "")),
+        })
+    return linhas
 
-    df_linhas = pd.DataFrame(linhas, columns=["mes", "tipo", "origem", "descricao", "valor", "categoria"])
 
-    # Resumo: tabela mês × (receitas, despesas por origem, saldo)
+def _projetar_planejamento(df_pl: pd.DataFrame, meses: list) -> list:
+    """Fonte 4: lançamentos manuais da planilha 'planejamento'."""
+    linhas = []
+    if df_pl.empty:
+        return linhas
+    meses_set = set(meses)
+    df_pl2 = df_pl.copy()
+    df_pl2["valor"] = pd.to_numeric(df_pl2["valor"], errors="coerce").fillna(0.0)
+    for _, row in df_pl2[df_pl2["mes"].astype(str).isin(meses_set)].iterrows():
+        linhas.append({
+            "mes": str(row["mes"]), "tipo": str(row["tipo"]),
+            "origem": "Planejamento manual",
+            "descricao": str(row["descricao"]), "valor": float(row["valor"]),
+            "categoria": str(row.get("categoria", "")),
+        })
+    return linhas
+
+
+def _consolidar_resumo(df_linhas: pd.DataFrame, meses: list) -> pd.DataFrame:
+    """Agrega df_linhas por mês gerando a tabela resumo (para exibição e exportação)."""
     resumo_rows = []
     for mes in meses:
         sub = df_linhas[df_linhas["mes"] == mes]
-        receitas      = float(sub[sub["tipo"] == "receita"]["valor"].sum())
-        desp_cartao   = float(sub[(sub["tipo"] == "despesa") & (sub["origem"] == "Cartão")]["valor"].sum())
-        desp_recor    = float(sub[(sub["tipo"] == "despesa") & (sub["origem"] == "Recorrente")]["valor"].sum())
-        desp_outras   = float(sub[(sub["tipo"] == "despesa") &
-                                   (~sub["origem"].isin(["Cartão", "Recorrente"]))]["valor"].sum())
-        despesas_tot  = desp_cartao + desp_recor + desp_outras
+        receitas    = float(sub[sub["tipo"] == "receita"]["valor"].sum())
+        desp_cartao = float(sub[(sub["tipo"] == "despesa") & (sub["origem"] == "Cartão")]["valor"].sum())
+        desp_recor  = float(sub[(sub["tipo"] == "despesa") & (sub["origem"] == "Recorrente")]["valor"].sum())
+        desp_outras = float(sub[(sub["tipo"] == "despesa") &
+                                (~sub["origem"].isin(["Cartão", "Recorrente"]))]["valor"].sum())
+        despesas_tot = desp_cartao + desp_recor + desp_outras
         resumo_rows.append({
             "mes": mes, "Mês": fmt_mes_str_pt(mes),
             "Receitas": receitas, "Cartão": desp_cartao, "Recorrentes": desp_recor,
             "Outras desp.": desp_outras, "Despesas (total)": despesas_tot,
             "Saldo projetado": receitas - despesas_tot,
         })
-    df_resumo = pd.DataFrame(resumo_rows)
+    return pd.DataFrame(resumo_rows)
+
+
+def _computar_panorama() -> tuple:
+    """
+    Orquestra as 4 fontes e retorna (df_linhas, df_resumo).
+    Função pura — sem cache próprio; o cache é gerenciado por get_panorama().
+    """
+    meses = proximos_12_meses()
+    linhas = (
+        _projetar_parcelas_cartao(carregar_parcelas(), meses)
+        + _projetar_despesas(carregar_despesas(), meses)
+        + _projetar_receitas(carregar_receitas(), meses)
+        + _projetar_planejamento(carregar_planejamento(), meses)
+    )
+    df_linhas = pd.DataFrame(linhas, columns=_COLS_LINHAS) if linhas else pd.DataFrame(columns=_COLS_LINHAS)
+    df_resumo = _consolidar_resumo(df_linhas, meses)
     return df_linhas, df_resumo
+
+
+# ── Cache de panorama via session_state (R-03) ────────────────────────────────
+
+def get_panorama() -> tuple:
+    """
+    Retorna (df_linhas, df_resumo) do cache em session_state.
+    Recomputa automaticamente se o cache não existir (primeira carga ou após
+    invalidação explícita via botão 'Atualizar projeções').
+    """
+    if "panorama_cache" not in st.session_state:
+        df_linhas, df_resumo = _computar_panorama()
+        st.session_state["panorama_cache"] = {
+            "df_linhas": df_linhas,
+            "df_resumo": df_resumo,
+            "ts": datetime.now(),
+        }
+    c = st.session_state["panorama_cache"]
+    return c["df_linhas"], c["df_resumo"]
+
+
+def _ts_panorama() -> str:
+    """Retorna a hora da última computação do panorama, ou '—' se não calculado."""
+    c = st.session_state.get("panorama_cache")
+    return c["ts"].strftime("%H:%M:%S") if c else "—"
+
+
+def invalidar_cache_panorama():
+    """
+    Descarta o panorama armazenado em session_state e limpa os caches das
+    funções de carregamento, forçando releitura completa do Sheets na próxima
+    chamada a get_panorama(). Deve ser chamada após qualquer escrita que
+    afete o planejamento.
+    """
+    st.session_state.pop("panorama_cache", None)
+    carregar_parcelas.clear()
+    carregar_despesas.clear()
+    carregar_receitas.clear()
+    carregar_planejamento.clear()
+
+
+# ── Exportação (R-02) ─────────────────────────────────────────────────────────
+
+def _df_resumo_export(df_resumo: pd.DataFrame) -> pd.DataFrame:
+    """Prepara o df_resumo para exportação (sem a coluna interna 'mes')."""
+    return df_resumo[["Mês", "Receitas", "Cartão", "Recorrentes",
+                       "Outras desp.", "Despesas (total)", "Saldo projetado"]].copy()
+
+
+def _df_detalhes_export(df_linhas: pd.DataFrame) -> pd.DataFrame:
+    """Prepara df_linhas para exportação com cabeçalhos amigáveis."""
+    det = df_linhas[["mes", "tipo", "origem", "descricao", "categoria", "valor"]].copy()
+    det.columns = ["Mês", "Tipo", "Origem", "Descrição", "Categoria", "Valor (R$)"]
+    det["Mês"] = det["Mês"].apply(fmt_mes_str_pt)
+    return det
+
+
+def gerar_excel_panorama(df_linhas: pd.DataFrame, df_resumo: pd.DataFrame) -> bytes:
+    """
+    Gera um arquivo Excel (.xlsx) com duas abas:
+      - 'Resumo'   → tabela agregada por mês
+      - 'Detalhes' → todos os lançamentos linha a linha
+    """
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        _df_resumo_export(df_resumo).to_excel(writer, sheet_name="Resumo", index=False)
+        _df_detalhes_export(df_linhas).to_excel(writer, sheet_name="Detalhes", index=False)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def gerar_csv_panorama(df_linhas: pd.DataFrame, df_resumo: pd.DataFrame) -> bytes:
+    """
+    Gera um CSV com BOM UTF-8 (compatível com Excel ao abrir diretamente),
+    com seções de Resumo e Detalhes separadas por linha em branco.
+    """
+    buf = io.StringIO()
+    buf.write("# RESUMO MENSAL\n")
+    _df_resumo_export(df_resumo).to_csv(buf, index=False)
+    buf.write("\n# DETALHES\n")
+    _df_detalhes_export(df_linhas).to_csv(buf, index=False)
+    return buf.getvalue().encode("utf-8-sig")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HEADER
@@ -1419,7 +1542,17 @@ with tab_plan:
 
     # ── Panorama ──
     with sub_plan_panorama:
-        df_linhas, df_resumo = montar_panorama_12_meses()
+        # R-03 · Barra de controle: timestamp + botão de atualização manual
+        ctrl_col1, ctrl_col2 = st.columns([3, 1])
+        ctrl_col1.caption(f"🕐 Projeções calculadas às {_ts_panorama()} "
+                          f"(cache persiste enquanto a sessão estiver aberta).")
+        if ctrl_col2.button("🔄 Atualizar projeções", key="btn_atualizar_panorama",
+                            use_container_width=True):
+            invalidar_cache_panorama()
+            st.rerun()
+
+        # R-03 · Carrega do cache (recomputa apenas se o cache foi invalidado)
+        df_linhas, df_resumo = get_panorama()
 
         sem_dados = df_resumo.empty or (
             df_resumo["Receitas"].eq(0).all() and df_resumo["Despesas (total)"].eq(0).all()
@@ -1461,6 +1594,38 @@ with tab_plan:
                 df_mes_det = df_mes_det[["tipo", "origem", "descricao", "categoria", "valor"]]
                 df_mes_det.columns = ["Tipo", "Origem", "Descrição", "Categoria", "Valor"]
                 st.dataframe(df_mes_det, use_container_width=True, hide_index=True)
+
+            # R-02 · Exportação
+            st.markdown("---")
+            st.markdown("##### ⬇️ Exportar projeção")
+            nome_arquivo = f"planejamento_{date.today().strftime('%Y%m%d')}"
+            exp_col1, exp_col2 = st.columns(2)
+            with exp_col1:
+                try:
+                    excel_bytes = gerar_excel_panorama(df_linhas, df_resumo)
+                    st.download_button(
+                        label="📥 Baixar Excel (.xlsx)",
+                        data=excel_bytes,
+                        file_name=f"{nome_arquivo}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="btn_export_xlsx",
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao gerar Excel: {e}")
+            with exp_col2:
+                try:
+                    csv_bytes = gerar_csv_panorama(df_linhas, df_resumo)
+                    st.download_button(
+                        label="📄 Baixar CSV (.csv)",
+                        data=csv_bytes,
+                        file_name=f"{nome_arquivo}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                        key="btn_export_csv",
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao gerar CSV: {e}")
 
     # ── Lançamentos Futuros (planejamento manual) ──
     with sub_plan_futuros:
@@ -1507,7 +1672,7 @@ with tab_plan:
                     else:
                         salvar_planejamento(tipo_db, desc_pl.strip(), v_pl, mes_pl, cat_pl, obs_pl.strip())
                         st.success(f"Lançamento '{desc_pl}' adicionado ao planejamento de {fmt_mes_str_pt(mes_pl)}!")
-                    montar_panorama_12_meses.clear()
+                    invalidar_cache_panorama()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao salvar planejamento: {e}")
@@ -1538,7 +1703,7 @@ with tab_plan:
                                  use_container_width=True, key="btn_excl_pl"):
                         try:
                             excluir_planejamento(id_pl)
-                            montar_panorama_12_meses.clear()
+                            invalidar_cache_panorama()
                             st.success(f"Item #{id_pl} excluído!")
                             st.rerun()
                         except Exception as e:
@@ -1582,7 +1747,7 @@ with tab_plan:
                     if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_dr", use_container_width=True):
                         try:
                             encerrar_recorrencia_despesa(id_dr)
-                            montar_panorama_12_meses.clear()
+                            invalidar_cache_panorama()
                             st.success(f"Recorrência de '{desc_dr}' encerrada a partir de hoje.")
                             st.rerun()
                         except Exception as e:
@@ -1614,7 +1779,7 @@ with tab_plan:
                     if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_rr", use_container_width=True):
                         try:
                             encerrar_recorrencia_receita(id_rr)
-                            montar_panorama_12_meses.clear()
+                            invalidar_cache_panorama()
                             st.success(f"Recorrência de '{desc_rr}' encerrada a partir de hoje.")
                             st.rerun()
                         except Exception as e:
@@ -1647,7 +1812,7 @@ with tab_plan:
                 try:
                     salvar_receita(qdesc.strip(), qv, qdata.strftime("%Y-%m-%d"), qcat, "",
                                    recorrente=True, recorrencia_fim=None)
-                    montar_panorama_12_meses.clear()
+                    invalidar_cache_panorama()
                     st.success(f"Receita recorrente '{qdesc}' cadastrada!")
                     st.rerun()
                 except Exception as e:
