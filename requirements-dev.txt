@@ -1,0 +1,8 @@
+# Dependências extras para desenvolvimento local — NÃO precisa subir isso
+# para o Streamlit Cloud, é só para rodar a suíte de testes na sua máquina:
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   pytest
+
+pytest==9.1.1
+pytest-cov==7.1.0

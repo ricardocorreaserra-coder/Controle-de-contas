@@ -1,5 +1,11 @@
-streamlit>=1.35.0
-gspread>=6.0.0
-google-auth>=2.29.0
-pandas>=2.0.0
-plotly>=5.20.0
+# Dependências de runtime do app (Streamlit Cloud instala a partir daqui).
+# Versões pinadas nas mesmas usadas para validar esta versão modular
+# (testes unitários + boot do app) — evita que um "pip install" futuro
+# puxe uma versão nova incompatível sem você perceber.
+
+streamlit==1.58.0
+pandas==3.0.2
+plotly==6.8.0
+gspread==6.2.1
+google-auth==2.55.1
+openpyxl==3.1.5
