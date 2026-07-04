@@ -12,7 +12,7 @@ MESES_PT = {
 }
 
 # ── Constantes de domínio ───────────────────────────────────────────────────────
-PAGAMENTOS   = ["Cartão de crédito", "Débito", "Pix", "Vale alimentação"]
+PAGAMENTOS   = ["Dinheiro", "Cartão de crédito", "Débito", "Pix", "Vale alimentação"]
 CAT_DESP     = ["Alimentação", "Transporte", "Saúde", "Moradia", "Lazer",
                  "Educação", "Vestuário", "Outros"]
 CAT_REC      = ["Salário", "Freelance", "Investimentos", "Aluguel recebido", "Outros"]
