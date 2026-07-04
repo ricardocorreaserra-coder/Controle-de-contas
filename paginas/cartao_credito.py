@@ -17,6 +17,7 @@ from logica.fechamentos import (
 )
 from utils.datas import seletor_mes_ano, hoje_str, add_months, fmt_mes_str_pt
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def _preparar_df_parcelas(df_p: pd.DataFrame, df_d: pd.DataFrame) -> pd.DataFrame:
@@ -233,17 +234,23 @@ def _sub_faturas_futuras(df_p, df_p2):
 
 def _sub_lancar_historico():
     st.subheader("Lançar Parcelas Anteriores / Saldo Devedor")
+    exibir_mensagem_pendente()
     st.markdown(
         "Utilize este formulário para lançar compras parceladas feitas antes do início do uso "
         "deste aplicativo que ainda possuem parcelas a vencer no cartão de crédito."
     )
+
+    # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
+    c_valor, _ = st.columns([1, 2])
+    with c_valor:
+        val_parc_m = campo_valor_moeda("Valor da Parcela (R$) *", base_key="m_val")
+
     with st.form("form_parcelas_manuais", clear_on_submit=True):
         col_m1, col_m2 = st.columns(2)
         card_m = col_m1.selectbox("Cartão de Crédito", obter_nomes_cartoes(), key="m_card")
         desc_m = col_m2.text_input("Descrição da Compra * (ex: Compra Geladeira)")
 
-        col_m3, col_m4, col_m5 = st.columns(3)
-        val_parc_m   = col_m3.text_input("Valor da Parcela (R$) *", placeholder="0,00", key="m_val")
+        col_m4, col_m5 = st.columns(2)
         parc_init_m  = col_m4.selectbox("Próxima Parcela a vencer *", list(range(1, 49)), index=0, key="m_init")
         parc_total_m = col_m5.selectbox("Total de Parcelas da Compra *", list(range(1, 49)), index=11, key="m_total")
 
@@ -274,9 +281,11 @@ def _sub_lancar_historico():
                 try:
                     salvar_parcela_manual(card_m, desc_m.strip(), v_p, parc_init_m, parc_total_m,
                                           venc_init_m.strftime("%Y-%m-%d"), obs_m.strip())
-                    st.success(f"Parcelas históricas do item '{desc_m}' cadastradas com sucesso!")
-                    st.rerun()
+                    st.session_state["salvando_parcela"] = False
+                    concluir_com_sucesso(f"Parcelas históricas do item '{desc_m}' cadastradas com sucesso!",
+                                         campo_valor_base_key="m_val")
                 except Exception as e:
+                    st.session_state["salvando_parcela"] = False
                     st.error(f"Erro ao salvar parcelas: {e}")
                 finally:
                     st.session_state["salvando_parcela"] = False
@@ -284,6 +293,7 @@ def _sub_lancar_historico():
 
 def _sub_configuracoes():
     st.subheader("Gerenciamento de Cartões")
+    exibir_mensagem_pendente()
     st.markdown("##### Cartões Cadastrados")
     df_c = carregar_cartoes()
     if df_c.empty:
@@ -339,13 +349,17 @@ def _sub_configuracoes():
 
     st.markdown("---")
     st.markdown("##### Cadastrar Novo Cartão")
+
+    # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
+    c_valor, _ = st.columns([1, 2])
+    with c_valor:
+        limite_nc = campo_valor_moeda("Limite de Crédito (R$) *", base_key="nc_limit")
+
     with st.form("form_cadastro_cartao", clear_on_submit=True):
-        col_nc1, col_nc2 = st.columns(2)
-        nome_nc   = col_nc1.text_input("Nome do Cartão * (ex: Nubank Platinum)")
-        limite_nc = col_nc2.text_input("Limite de Crédito (R$) *", placeholder="0,00", key="nc_limit")
-        col_nc3, col_nc4 = st.columns(2)
+        col_nc1, col_nc3 = st.columns(2)
+        nome_nc       = col_nc1.text_input("Nome do Cartão * (ex: Nubank Platinum)")
         fechamento_nc = col_nc3.selectbox("Dia do Fechamento da Fatura *", list(range(1, 32)), index=4,  key="nc_fech")
-        vencimento_nc = col_nc4.selectbox("Dia do Vencimento da Fatura *", list(range(1, 32)), index=11, key="nc_venc")
+        vencimento_nc = st.selectbox("Dia do Vencimento da Fatura *", list(range(1, 32)), index=11, key="nc_venc")
         submit_nc = st.form_submit_button("✔ Cadastrar Novo Cartão", type="primary", use_container_width=True)
 
     if submit_nc:
@@ -362,8 +376,8 @@ def _sub_configuracoes():
         else:
             try:
                 salvar_cartao(nome_nc.strip(), lim, fechamento_nc, vencimento_nc)
-                st.success(f"Novo cartão '{nome_nc}' cadastrado com sucesso!")
-                st.rerun()
+                concluir_com_sucesso(f"Novo cartão '{nome_nc}' cadastrado com sucesso!",
+                                     campo_valor_base_key="nc_limit")
             except Exception as e:
                 st.error(f"Erro ao cadastrar cartão: {e}")
 

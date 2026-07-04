@@ -7,14 +7,21 @@ import streamlit as st
 from config import CAT_REC
 from logica.receitas import salvar_receita
 from utils.formatacao import parse_valor
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def render():
     st.subheader("Nova Receita")
+    exibir_mensagem_pendente()
+
+    # Fora do st.form de propósito — ver comentário equivalente em
+    # paginas/lancar_despesa.py.
+    c_valor, _ = st.columns([1, 3])
+    with c_valor:
+        rvalor = campo_valor_moeda("Valor (R$) *", base_key="rec_valor")
+
     with st.form("form_receita", clear_on_submit=True):
-        r1, r2 = st.columns([3, 1])
-        rdesc  = r1.text_input("Descrição *")
-        rvalor = r2.text_input("Valor (R$) *", placeholder="0,00")
+        rdesc = st.text_input("Descrição *")
 
         r3, r4 = st.columns(2)
         rdata = r3.date_input("Data *", value=date.today(), format="DD/MM/YYYY")
@@ -54,8 +61,8 @@ def render():
                 try:
                     salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip(),
                                    recorrente=rrecorrente, recorrencia_fim=rrec_fim)
-                    st.success("✅ Receita lançada com sucesso!")
-                except Exception as e:
-                    st.error(f"Erro ao salvar receita: {e}")
-                finally:
                     st.session_state["salvando_receita"] = False
+                    concluir_com_sucesso("✅ Receita lançada com sucesso!", campo_valor_base_key="rec_valor")
+                except Exception as e:
+                    st.session_state["salvando_receita"] = False
+                    st.error(f"Erro ao salvar receita: {e}")

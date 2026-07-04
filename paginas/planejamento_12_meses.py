@@ -17,6 +17,7 @@ from logica.planejamento import (
 from logica.exportacao import gerar_excel_panorama, gerar_csv_panorama
 from utils.datas import proximos_12_meses, fmt_mes_str_pt
 from utils.formatacao import fmt_moeda, parse_valor, converter_data_para_exibicao
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def _sub_panorama(meses_futuros):
@@ -109,18 +110,22 @@ def _sub_panorama(meses_futuros):
 
 def _sub_lancamentos_futuros(meses_futuros):
     st.subheader("Lançar item de Planejamento")
+    exibir_mensagem_pendente()
     st.caption("Use para itens pontuais que não são recorrentes nem parcelas "
                "(ex.: IPTU em março, 13º salário em dezembro).")
+
+    # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
+    c_valor, _ = st.columns([1, 3])
+    with c_valor:
+        valor_pl = campo_valor_moeda("Valor (R$) *", base_key="pl_valor")
 
     with st.form("form_planejamento", clear_on_submit=True):
         p1, p2 = st.columns([1, 3])
         tipo_pl = p1.selectbox("Tipo", ["Despesa", "Receita"])
         desc_pl = p2.text_input("Descrição *")
 
-        p3, p4 = st.columns(2)
-        valor_pl = p3.text_input("Valor (R$) *", placeholder="0,00", key="pl_valor")
         cat_opcoes = CAT_DESP if tipo_pl == "Despesa" else CAT_REC
-        cat_pl = p4.selectbox("Categoria", [""] + cat_opcoes, key="pl_cat")
+        cat_pl = st.selectbox("Categoria", [""] + cat_opcoes, key="pl_cat")
 
         mes_pl = st.selectbox("Mês de competência *", meses_futuros,
                               format_func=fmt_mes_str_pt, key="pl_mes")
@@ -147,12 +152,12 @@ def _sub_lancamentos_futuros(meses_futuros):
                 tipo_db = "despesa" if tipo_pl == "Despesa" else "receita"
                 if replicar_pl:
                     salvar_planejamento_replicado(tipo_db, desc_pl.strip(), v_pl, meses_futuros, cat_pl, obs_pl.strip())
-                    st.success(f"Lançamento '{desc_pl}' replicado para os 12 meses!")
+                    msg = f"Lançamento '{desc_pl}' replicado para os 12 meses!"
                 else:
                     salvar_planejamento(tipo_db, desc_pl.strip(), v_pl, mes_pl, cat_pl, obs_pl.strip())
-                    st.success(f"Lançamento '{desc_pl}' adicionado ao planejamento de {fmt_mes_str_pt(mes_pl)}!")
+                    msg = f"Lançamento '{desc_pl}' adicionado ao planejamento de {fmt_mes_str_pt(mes_pl)}!"
                 invalidar_cache_panorama()
-                st.rerun()
+                concluir_com_sucesso(msg, campo_valor_base_key="pl_valor")
             except Exception as e:
                 st.error(f"Erro ao salvar planejamento: {e}")
 
@@ -267,10 +272,15 @@ def _sub_recorrentes():
 
     st.markdown("---")
     st.markdown("##### Cadastro rápido de receita recorrente")
+    exibir_mensagem_pendente()
+
+    # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
+    c_valor, _ = st.columns([1, 3])
+    with c_valor:
+        qvalor = campo_valor_moeda("Valor (R$) *", base_key="qr_valor")
+
     with st.form("form_receita_recorrente_rapida", clear_on_submit=True):
-        qr1, qr2 = st.columns([3, 1])
-        qdesc = qr1.text_input("Descrição * (ex: Salário)")
-        qvalor = qr2.text_input("Valor (R$) *", placeholder="0,00", key="qr_valor")
+        qdesc = st.text_input("Descrição * (ex: Salário)")
         qr3, qr4 = st.columns(2)
         qdata = qr3.date_input("Início *", value=date.today(), format="DD/MM/YYYY", key="qr_data")
         qcat  = qr4.selectbox("Categoria", [""] + CAT_REC, key="qr_cat")
@@ -293,8 +303,7 @@ def _sub_recorrentes():
                 salvar_receita(qdesc.strip(), qv, qdata.strftime("%Y-%m-%d"), qcat, "",
                                recorrente=True, recorrencia_fim=None)
                 invalidar_cache_panorama()
-                st.success(f"Receita recorrente '{qdesc}' cadastrada!")
-                st.rerun()
+                concluir_com_sucesso(f"Receita recorrente '{qdesc}' cadastrada!", campo_valor_base_key="qr_valor")
             except Exception as e:
                 st.error(f"Erro ao cadastrar: {e}")
 

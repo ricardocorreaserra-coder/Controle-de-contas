@@ -33,6 +33,30 @@ def parse_valor(texto: str) -> float:
     return float(t)
 
 
+def formatar_input_moeda(raw: str) -> str:
+    """
+    Formata dígitos digitados livremente como valor monetário brasileiro,
+    preenchendo as casas de centavos da direita para a esquerda — o mesmo
+    comportamento usado em apps bancários (digitar "150" vira "1,50";
+    digitar "15000" vira "150,00"; digitar só "1" vira "0,01").
+
+    Ignora qualquer caractere que não seja dígito, então também funciona
+    se o texto já vier formatado (colado): "1.234,56" -> dígitos "123456"
+    -> "1.234,56" (o mesmo resultado, já que os 2 últimos dígitos sempre
+    viram os centavos).
+
+    Nunca lança exceção — texto vazio ou só zeros retorna "0,00".
+    """
+    digitos = re.sub(r"[^0-9]", "", raw or "")
+    digitos = digitos.lstrip("0")
+    if not digitos:
+        return "0,00"
+    digitos = digitos.zfill(3)
+    parte_inteira, centavos = digitos[:-2], digitos[-2:]
+    milhar_fmt = "{:,}".format(int(parte_inteira)).replace(",", ".")
+    return f"{milhar_fmt},{centavos}"
+
+
 def converter_data_para_exibicao(dt_str):
     try:
         return datetime.strptime(str(dt_str), "%Y-%m-%d").strftime("%d/%m/%Y")

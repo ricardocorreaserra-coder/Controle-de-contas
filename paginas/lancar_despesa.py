@@ -8,14 +8,23 @@ from config import CAT_DESP, PAGAMENTOS, PARCELAS_OPT
 from sheets.loaders import obter_nomes_cartoes
 from logica.despesas import salvar_despesa
 from utils.formatacao import parse_valor
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def render():
     st.subheader("Nova Despesa")
+    exibir_mensagem_pendente()
+
+    # Fora do st.form de propósito: o campo de valor precisa reagir ao
+    # perder o foco (on_change) para aplicar a máscara de centavos, algo
+    # que widgets dentro de formulários só fazem na submissão do form
+    # inteiro — ver utils/widgets.py::campo_valor_moeda.
+    c_valor, _ = st.columns([1, 3])
+    with c_valor:
+        valor = campo_valor_moeda("Valor (R$) *", base_key="desp_valor")
+
     with st.form("form_despesa", clear_on_submit=True):
-        c1, c2 = st.columns([3, 1])
-        desc  = c1.text_input("Descrição *")
-        valor = c2.text_input("Valor (R$) *", placeholder="0,00")
+        desc = st.text_input("Descrição *")
 
         c3, c4 = st.columns(2)
         data_d = c3.date_input("Data *", value=date.today(), format="DD/MM/YYYY")
@@ -71,8 +80,8 @@ def render():
                     salvar_despesa(desc.strip(), v, data_d.strftime("%Y-%m-%d"),
                                    local.strip(), pag, cat, cartao, n_parc, obs.strip(),
                                    recorrente=recorrente, recorrencia_fim=rec_fim)
-                    st.success("✅ Despesa lançada com sucesso!")
-                except Exception as e:
-                    st.error(f"Erro ao salvar despesa: {e}")
-                finally:
                     st.session_state["salvando_despesa"] = False
+                    concluir_com_sucesso("✅ Despesa lançada com sucesso!", campo_valor_base_key="desp_valor")
+                except Exception as e:
+                    st.session_state["salvando_despesa"] = False
+                    st.error(f"Erro ao salvar despesa: {e}")
