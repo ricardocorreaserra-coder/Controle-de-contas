@@ -65,6 +65,16 @@ def carregar_fechamentos():
     return sheet_to_df(get_sheet("fechamentos"))
 
 
+@st.cache_data(ttl=300)
+def carregar_emprestimos():
+    """
+    Empréstimos — aba isolada de consulta e controle. Nenhuma outra função
+    de carregamento (despesas, planejamento, dashboard) lê esta tabela, e
+    ela nunca deve ser somada em relatórios de outras abas.
+    """
+    return sheet_to_df(get_sheet("emprestimos"))
+
+
 def obter_nomes_cartoes() -> list:
     try:
         df_c = carregar_cartoes()

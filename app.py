@@ -20,6 +20,7 @@ from paginas import (
     cartao_credito,
     conta_corrente,
     planejamento_12_meses,
+    emprestimos,
 )
 
 # ── Configuração da página ─────────────────────────────────────────────────────
@@ -48,10 +49,10 @@ st.markdown('<div class="main-header"><span style="font-size:1.6rem">💰</span>
 # ══════════════════════════════════════════════════════════════════════════════
 # ABAS
 # ══════════════════════════════════════════════════════════════════════════════
-tab_dash, tab_lanc, tab_rec, tab_lista, tab_cc, tab_cc_rec, tab_plan = st.tabs([
+tab_dash, tab_lanc, tab_rec, tab_lista, tab_cc, tab_cc_rec, tab_plan, tab_emp = st.tabs([
     "📊 Dashboard", "➖ Lançar Despesa", "➕ Lançar Receita",
     "☰ Despesas", "💳 Cartão de Crédito", "🏦 Conta Corrente",
-    "🔮 Planejamento 12 Meses",
+    "🔮 Planejamento 12 Meses", "🏛️ Empréstimos",
 ])
 
 with tab_dash:
@@ -74,3 +75,6 @@ with tab_cc_rec:
 
 with tab_plan:
     planejamento_12_meses.render()
+
+with tab_emp:
+    emprestimos.render()

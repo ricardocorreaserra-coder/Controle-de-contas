@@ -14,7 +14,7 @@ MESES_PT = {
 # ── Constantes de domínio ───────────────────────────────────────────────────────
 PAGAMENTOS   = ["Dinheiro", "Cartão de crédito", "Débito", "Pix", "Vale alimentação"]
 CAT_DESP     = ["Alimentação", "Transporte", "Saúde", "Moradia", "Lazer",
-                 "Educação", "Vestuário", "Outros"]
+                 "Educação", "Vestuário", "Despesa bancária", "Outros"]
 CAT_REC      = ["Salário", "Freelance", "Investimentos", "Aluguel recebido", "Outros"]
 PARCELAS_OPT = [1, 2, 3, 4, 5, 6, 10, 12, 18, 24]
 DIA_VENCIMENTO_PADRAO = 10  # usado apenas se um cartão referenciado não for encontrado no cadastro
@@ -41,6 +41,12 @@ EXPECTED_HEADERS = {
     # ver logica/fechamentos.py para o motivo desta tabela existir.
     "fechamentos": ["id", "cartao", "mes_referencia", "data_fechamento",
                      "data_vencimento", "observacao", "criado_em"],
+    # Empréstimos — aba isolada, apenas para consulta e controle. NUNCA
+    # entra em nenhuma soma de despesas, dashboard ou planejamento —
+    # ver logica/emprestimos.py.
+    "emprestimos": ["id", "descricao", "banco", "valor_parcela",
+                     "parcelas_restantes", "valor_total_devido",
+                     "criado_em", "atualizado_em"],
 }
 
 # ── CSS da aplicação ─────────────────────────────────────────────────────────────

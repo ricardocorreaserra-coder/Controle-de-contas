@@ -55,23 +55,29 @@ def limpar_campo_valor(base_key: str):
     st.session_state[f"_v__{base_key}"] = st.session_state.get(f"_v__{base_key}", 0) + 1
 
 
-def concluir_com_sucesso(mensagem: str, campo_valor_base_key: str = None):
+def concluir_com_sucesso(mensagem: str, campo_valor_base_key=None):
     """
     Agenda a exibição de uma mensagem de sucesso para a PRÓXIMA execução
-    do script e, opcionalmente, agenda a limpeza de um campo de valor
-    monetário criado fora de um st.form via `campo_valor_moeda`. Termina
-    chamando st.rerun().
+    do script e, opcionalmente, agenda a limpeza de um ou mais campos de
+    valor monetário criados fora de um st.form via `campo_valor_moeda`.
+    Termina chamando st.rerun().
+
+    `campo_valor_base_key` aceita None, uma string única, ou uma lista de
+    strings — útil em telas com mais de um campo de valor (ex.: a tela de
+    Empréstimos, que tem "Valor da Parcela" e "Valor Total do Débito").
 
     Por que agendar em vez de só chamar st.success() direto: como esta
     função sempre termina com st.rerun(), qualquer st.success() chamado
     ANTES dele na mesma execução nunca chegaria a ser exibido — o rerun
     interrompe o envio da tela para o navegador. Guardando a mensagem em
     session_state, ela é exibida (por `exibir_mensagem_pendente`) já na
-    execução seguinte, junto com o campo de valor mostrando-se vazio.
+    execução seguinte, junto com o(s) campo(s) de valor mostrando-se vazios.
     """
     st.session_state["_msg_sucesso_pendente"] = mensagem
     if campo_valor_base_key:
-        limpar_campo_valor(campo_valor_base_key)
+        chaves = [campo_valor_base_key] if isinstance(campo_valor_base_key, str) else campo_valor_base_key
+        for chave in chaves:
+            limpar_campo_valor(chave)
     st.rerun()
 
 
