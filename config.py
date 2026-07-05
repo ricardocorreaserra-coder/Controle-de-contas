@@ -44,9 +44,12 @@ EXPECTED_HEADERS = {
     # Empréstimos — aba isolada, apenas para consulta e controle. NUNCA
     # entra em nenhuma soma de despesas, dashboard ou planejamento —
     # ver logica/emprestimos.py.
+    # `valor_total_devido` é sempre CALCULADO (valor_parcela × parcelas_restantes),
+    # nunca digitado manualmente. `proxima_data_vencimento` é a data-base a
+    # partir da qual a baixa automática das parcelas é calculada.
     "emprestimos": ["id", "descricao", "banco", "valor_parcela",
-                     "parcelas_restantes", "valor_total_devido",
-                     "criado_em", "atualizado_em"],
+                     "parcelas_restantes", "proxima_data_vencimento",
+                     "valor_total_devido", "criado_em", "atualizado_em"],
 }
 
 # ── CSS da aplicação ─────────────────────────────────────────────────────────────
