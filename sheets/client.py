@@ -89,6 +89,111 @@ def next_id(ws) -> int:
     return int(ids.max()) + 1
 
 
+# ── Escrita com ID único (proteção contra uso simultâneo) ─────────────────────
+#
+# PROBLEMA: `next_id` lê o maior ID e soma 1. Se duas pessoas salvarem quase
+# ao mesmo tempo (acesso compartilhado por casal/família), ambas leem o mesmo
+# "último ID" e gravam linhas com o MESMO id — o que faz uma exclusão apagar
+# os dois registros de uma vez.
+#
+# SOLUÇÃO: depois de gravar, conferir se o ID escolhido acabou duplicado. Em
+# caso de empate, quem gravou na linha mais abaixo cede e regrava o próprio
+# ID. As duas funções de decisão (`numero_linha_do_range` e
+# `resolver_colisao_id`) são puras e testadas isoladamente.
+
+def numero_linha_do_range(updated_range) -> int:
+    """
+    Extrai o número da primeira linha de um range devolvido pela API do
+    Sheets (ex.: "despesas!A6:I6" -> 6). Devolve None se não conseguir
+    interpretar — nesse caso quem chama simplesmente não faz a checagem
+    de colisão, mantendo o comportamento antigo.
+    """
+    if not updated_range:
+        return None
+    texto = str(updated_range).split("!")[-1]
+    inicio = texto.split(":")[0]
+    digitos = "".join(ch for ch in inicio if ch.isdigit())
+    return int(digitos) if digitos else None
+
+
+def resolver_colisao_id(ids_coluna: list, meu_id: int, minha_linha: int) -> int:
+    """
+    Decide se a linha `minha_linha` precisa trocar de ID.
+
+    `ids_coluna` é a coluna A inteira, como devolvida por `ws.col_values(1)`
+    (inclui o cabeçalho na posição 0, então a linha N está no índice N-1).
+
+    Devolve None quando não há colisão (ou quando esta linha é a primeira
+    ocorrência do ID e portanto tem direito de mantê-lo). Devolve um ID novo,
+    maior que todos os existentes, quando esta linha precisa ceder.
+    """
+    linhas_com_meu_id = [
+        pos + 1 for pos, valor in enumerate(ids_coluna)
+        if str(valor).strip() == str(meu_id)
+    ]
+    if len(linhas_com_meu_id) <= 1 or minha_linha == min(linhas_com_meu_id):
+        return None
+    numericos = [
+        int(v) for v in ids_coluna
+        if str(v).strip().lstrip("-").isdigit()
+    ]
+    return (max(numericos) + 1) if numericos else 1
+
+
+def _corrigir_id_se_colidiu(ws, id_gravado: int, linha: int) -> int:
+    """Relê a coluna de IDs e regrava o ID desta linha se ele colidiu.
+    Devolve o ID final (o original ou o corrigido)."""
+    if linha is None:
+        return id_gravado
+    try:
+        novo = resolver_colisao_id(ws.col_values(1), id_gravado, linha)
+    except Exception:
+        return id_gravado
+    if novo is None:
+        return id_gravado
+    ws.update_cell(linha, 1, novo)
+    return novo
+
+
+def append_row_id_unico(ws, valores_sem_id: list) -> int:
+    """
+    Acrescenta uma linha cujo primeiro campo é o `id`, garantindo que esse
+    id não fique duplicado mesmo se outra pessoa gravar ao mesmo tempo.
+    Devolve o ID efetivamente gravado (pode diferir do inicial se houve
+    colisão) — importante para vincular registros filhos, como as parcelas
+    de uma despesa.
+    """
+    id_inicial = next_id(ws)
+    resposta = ws.append_row([id_inicial] + list(valores_sem_id))
+    linha = numero_linha_do_range(
+        (resposta or {}).get("updates", {}).get("updatedRange")
+    )
+    return _corrigir_id_se_colidiu(ws, id_inicial, linha)
+
+
+def append_rows_ids_unicos(ws, linhas_sem_id: list) -> list:
+    """
+    Versão em lote de `append_row_id_unico`: recebe as linhas SEM o id e
+    atribui ids sequenciais a partir do próximo disponível, conferindo
+    colisão linha a linha depois da escrita. Devolve a lista de ids
+    efetivamente gravados, na mesma ordem.
+    """
+    if not linhas_sem_id:
+        return []
+    id_base = next_id(ws)
+    payload = [[id_base + i] + list(valores) for i, valores in enumerate(linhas_sem_id)]
+    resposta = ws.append_rows(payload)
+    primeira_linha = numero_linha_do_range(
+        (resposta or {}).get("updates", {}).get("updatedRange")
+    )
+    if primeira_linha is None:
+        return [linha[0] for linha in payload]
+    return [
+        _corrigir_id_se_colidiu(ws, id_base + i, primeira_linha + i)
+        for i in range(len(payload))
+    ]
+
+
 def delete_rows_batch(ws, indices):
     """Deleta várias linhas do Google Sheets em uma única requisição em lote."""
     if not indices:

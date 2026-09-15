@@ -19,9 +19,10 @@ REGRAS DE NEGÓCIO (adaptadas a pedido do usuário):
 
 from datetime import date, datetime
 
-from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, next_id
+from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_row_id_unico
 from sheets.loaders import carregar_emprestimos
 from utils.datas import add_months
+from utils.sessao import usuario_atual
 
 
 # ── Funções puras ────────────────────────────────────────────────────────────
@@ -77,9 +78,10 @@ def salvar_emprestimo(descricao: str, banco: str, valor_parcela: float,
     ws = get_sheet("emprestimos")
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     valor_total = calcular_valor_total_devido(valor_parcela, parcelas_restantes)
-    ws.append_row([
-        next_id(ws), descricao, banco, valor_parcela, parcelas_restantes,
+    append_row_id_unico(ws, [
+        descricao, banco, valor_parcela, parcelas_restantes,
         proxima_data_vencimento.strftime("%Y-%m-%d"), valor_total, agora, agora,
+        usuario_atual(),
     ])
     carregar_emprestimos.clear()
 

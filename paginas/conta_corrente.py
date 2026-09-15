@@ -41,11 +41,13 @@ def render():
         for _, row in rec_cc.iterrows():
             movs.append({"Data": row["data"], "Descrição": row["descricao"], "Tipo": "Receita",
                          "Categoria": row.get("categoria", ""), "Valor": float(row["valor"]),
+                         "Lançado por": row.get("lancado_por", ""),
                          "ID": row["id"], "_tipo": "rec"})
     if not desp_cc.empty:
         for _, row in desp_cc.iterrows():
             movs.append({"Data": row["data"], "Descrição": row["descricao"], "Tipo": "Despesa",
                          "Categoria": row.get("categoria", ""), "Valor": -float(row["valor"]),
+                         "Lançado por": row.get("lancado_por", ""),
                          "ID": row["id"], "_tipo": "dsp"})
     movs.sort(key=lambda x: x["Data"])
 
@@ -57,6 +59,7 @@ def render():
             "Data": converter_data_para_exibicao(m["Data"]), "Descrição": m["Descrição"],
             "Tipo": m["Tipo"], "Categoria": m["Categoria"],
             "Valor": fmt_moeda(abs(m["Valor"])), "Saldo": fmt_moeda(saldo_ac),
+            "Lançado por": m.get("Lançado por", ""),
         })
 
     if not extrato:

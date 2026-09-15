@@ -5,17 +5,19 @@ encerramento de recorrência.
 
 from datetime import datetime
 
-from sheets.client import get_sheet, sheet_to_df, next_id, delete_rows_batch
+from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_row_id_unico
 from sheets.loaders import carregar_receitas
 from utils.datas import hoje_str
+from utils.sessao import usuario_atual
 
 
 def salvar_receita(desc, valor, data, cat, obs, recorrente=False, recorrencia_fim=None):
     ws = get_sheet("receitas")
-    ws.append_row([next_id(ws), desc, valor, data, cat, obs,
-                   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                   "sim" if recorrente else "nao",
-                   recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else ""])
+    append_row_id_unico(ws, [desc, valor, data, cat, obs,
+                             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                             "sim" if recorrente else "nao",
+                             recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else "",
+                             usuario_atual()])
     carregar_receitas.clear()
 
 

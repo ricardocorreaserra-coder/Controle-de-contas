@@ -21,7 +21,7 @@ docstring.
 
 from datetime import date, datetime
 
-from sheets.client import get_sheet, sheet_to_df, next_id, delete_rows_batch
+from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_row_id_unico
 from sheets.loaders import carregar_fechamentos
 from utils.datas import add_months
 
@@ -159,10 +159,10 @@ def fechamentos_ordenados_por_cartao(cartao: str) -> list:
 def salvar_fechamento(cartao: str, mes_referencia: str, data_fechamento: date,
                        data_vencimento: date, obs: str = ""):
     ws = get_sheet("fechamentos")
-    ws.append_row([next_id(ws), cartao, mes_referencia,
-                   data_fechamento.strftime("%Y-%m-%d"),
-                   data_vencimento.strftime("%Y-%m-%d"), obs,
-                   datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    append_row_id_unico(ws, [cartao, mes_referencia,
+                             data_fechamento.strftime("%Y-%m-%d"),
+                             data_vencimento.strftime("%Y-%m-%d"), obs,
+                             datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
     carregar_fechamentos.clear()
 
 

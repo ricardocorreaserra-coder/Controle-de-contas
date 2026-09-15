@@ -42,12 +42,18 @@ def render():
         st.info("Nenhuma despesa no período selecionado.")
         return
 
-    df_show = df_filtrado[["id", "descricao", "valor", "data", "local",
-                            "pagamento", "categoria", "n_parcelas", "observacao"]].copy()
+    colunas = ["id", "descricao", "valor", "data", "local",
+               "pagamento", "categoria", "n_parcelas", "observacao"]
+    if "lancado_por" in df_filtrado.columns:
+        colunas.append("lancado_por")
+    df_show = df_filtrado[colunas].copy()
     df_show["valor"] = df_show["valor"].apply(fmt_moeda)
     df_show["data"]  = df_show["data"].apply(converter_data_para_exibicao)
-    df_show.columns  = ["ID", "Descrição", "Valor", "Data", "Local",
-                         "Pagamento", "Categoria", "Parcelas", "Obs"]
+    nomes = ["ID", "Descrição", "Valor", "Data", "Local",
+             "Pagamento", "Categoria", "Parcelas", "Obs"]
+    if "lancado_por" in df_filtrado.columns:
+        nomes.append("Lançado por")
+    df_show.columns = nomes
 
     event_d = st.dataframe(df_show, use_container_width=True, hide_index=True,
                            on_select="rerun", selection_mode="single-row")

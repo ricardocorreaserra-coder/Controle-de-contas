@@ -17,9 +17,13 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from sheets.client import get_sheet, next_id, sheet_to_df, delete_rows_batch
+from sheets.client import (
+    get_sheet, sheet_to_df, delete_rows_batch,
+    append_row_id_unico, append_rows_ids_unicos,
+)
 from sheets.loaders import carregar_despesas, carregar_receitas, carregar_parcelas, carregar_planejamento
 from utils.datas import fmt_mes_str_pt, mes_ativo_recorrencia, proximos_12_meses
+from utils.sessao import usuario_atual
 
 _COLS_LINHAS = ["mes", "tipo", "origem", "descricao", "valor", "categoria"]
 
@@ -214,19 +218,20 @@ def invalidar_cache_panorama():
 
 def salvar_planejamento(tipo, desc, valor, mes, cat, obs):
     ws = get_sheet("planejamento")
-    ws.append_row([next_id(ws), tipo, desc, valor, mes, cat, obs,
-                   datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    append_row_id_unico(ws, [tipo, desc, valor, mes, cat, obs,
+                             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                             usuario_atual()])
     carregar_planejamento.clear()
 
 
 def salvar_planejamento_replicado(tipo, desc, valor, meses, cat, obs):
     ws = get_sheet("planejamento")
-    pid = next_id(ws)
     rows = []
-    for i, mes in enumerate(meses):
-        rows.append([pid + i, tipo, desc, valor, mes, cat, obs,
-                     datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-    ws.append_rows(rows)
+    autor = usuario_atual()
+    for mes in meses:
+        rows.append([tipo, desc, valor, mes, cat, obs,
+                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"), autor])
+    append_rows_ids_unicos(ws, rows)
     carregar_planejamento.clear()
 
 

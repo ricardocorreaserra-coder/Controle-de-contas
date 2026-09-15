@@ -9,24 +9,33 @@ from datetime import datetime
 import pandas as pd
 
 from config import DIA_VENCIMENTO_PADRAO
-from sheets.client import get_sheet, sheet_to_df, next_id, delete_rows_batch
+from sheets.client import (
+    get_sheet, sheet_to_df, delete_rows_batch,
+    append_row_id_unico, append_rows_ids_unicos,
+)
 from sheets.loaders import carregar_cartoes, carregar_despesas, carregar_parcelas
 from logica.cartoes import resolver_vencimento_parcela
 from logica.fechamentos import fechamentos_ordenados_por_cartao
 from logica.parcelas import valores_parcelas
 from utils.datas import hoje_str
+from utils.sessao import usuario_atual
 
 
 def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
                     recorrente=False, recorrencia_fim=None):
     ws_d = get_sheet("despesas")
     ws_p = get_sheet("parcelas")
-    did  = next_id(ws_d)
-    ws_d.append_row([did, desc, valor, data, local, pag, cat,
-                     cartao or "", n_parc, obs,
-                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                     "sim" if recorrente else "nao",
-                     recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else ""])
+    # append_row_id_unico devolve o id realmente gravado — pode diferir do
+    # calculado se outra pessoa gravou ao mesmo tempo. É esse id que precisa
+    # ser usado para vincular as parcelas abaixo.
+    did = append_row_id_unico(ws_d, [
+        desc, valor, data, local, pag, cat,
+        cartao or "", n_parc, obs,
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "sim" if recorrente else "nao",
+        recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else "",
+        usuario_atual(),
+    ])
     if pag == "Cartão de crédito":
         df_c = carregar_cartoes()
         card_info = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
@@ -36,7 +45,6 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
         else:
             df_fechamento = DIA_VENCIMENTO_PADRAO
             df_vencimento = DIA_VENCIMENTO_PADRAO
-        pid  = next_id(ws_p)
         base = datetime.strptime(data, "%Y-%m-%d").date()
         valores = valores_parcelas(valor, n_parc)  # B-03 · soma exata ao valor total
         # Prioriza fechamentos reais já registrados manualmente para este
@@ -48,9 +56,9 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
             venc, origem = resolver_vencimento_parcela(
                 base, df_fechamento, df_vencimento, i + 1, fechamentos
             )
-            rows.append([pid + i, did, i + 1, n_parc, valores[i],
+            rows.append([did, i + 1, n_parc, valores[i],
                          venc.strftime("%Y-%m-%d"), "pendente", desc, cartao, origem])
-        ws_p.append_rows(rows)
+        append_rows_ids_unicos(ws_p, rows)
     carregar_despesas.clear()
     carregar_parcelas.clear()
 

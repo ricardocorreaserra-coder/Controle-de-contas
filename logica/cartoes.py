@@ -14,7 +14,7 @@ fallback interno (e para pré-preencher sugestões na UI).
 import calendar
 from datetime import date, datetime
 
-from sheets.client import get_sheet, sheet_to_df, next_id, delete_rows_batch
+from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_row_id_unico
 from sheets.loaders import carregar_cartoes, carregar_despesas, carregar_parcelas
 from utils.datas import add_months
 from logica.fechamentos import encontrar_fechamento_para_compra, indexar_fechamentos_por_mes
@@ -92,8 +92,8 @@ def resolver_vencimento_parcela(data_compra: date, dia_fechamento: int, dia_venc
 
 def salvar_cartao(nome, limite, dia_fechamento, dia_vencimento):
     ws = get_sheet("cartoes")
-    ws.append_row([next_id(ws), nome, limite, dia_fechamento, dia_vencimento,
-                   datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+    append_row_id_unico(ws, [nome, limite, dia_fechamento, dia_vencimento,
+                             datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
     carregar_cartoes.clear()
 
 

@@ -11,7 +11,7 @@ import gspread
 import pandas as pd
 
 from config import DIA_VENCIMENTO_PADRAO
-from sheets.client import get_sheet, sheet_to_df, next_id
+from sheets.client import get_sheet, sheet_to_df, append_rows_ids_unicos
 from sheets.loaders import carregar_cartoes, carregar_parcelas
 from utils.datas import add_months
 
@@ -36,7 +36,6 @@ def salvar_parcela_manual(cartao, desc, valor_parcela, num_inicial, num_total, v
     'manual' — não há estimativa envolvida aqui.
     """
     ws_p = get_sheet("parcelas")
-    pid  = next_id(ws_p)
     df_c = carregar_cartoes()
     card_info     = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
     df_vencimento = int(card_info.iloc[0]["dia_vencimento"]) if not card_info.empty else DIA_VENCIMENTO_PADRAO
@@ -46,9 +45,9 @@ def salvar_parcela_manual(cartao, desc, valor_parcela, num_inicial, num_total, v
         venc    = add_months(base_date, i)
         max_day = calendar.monthrange(venc.year, venc.month)[1]
         venc    = venc.replace(day=min(df_vencimento, max_day))
-        rows.append([pid + i, -1, num_inicial + i, num_total, valor_parcela,
+        rows.append([-1, num_inicial + i, num_total, valor_parcela,
                      venc.strftime("%Y-%m-%d"), "pendente", desc, cartao, "manual"])
-    ws_p.append_rows(rows)
+    append_rows_ids_unicos(ws_p, rows)
     carregar_parcelas.clear()
 
 

@@ -28,15 +28,17 @@ SCOPES = [
 EXPECTED_HEADERS = {
     "despesas": ["id", "descricao", "valor", "data", "local",
                  "pagamento", "categoria", "cartao", "n_parcelas",
-                 "observacao", "criado_em", "recorrente", "recorrencia_fim"],
+                 "observacao", "criado_em", "recorrente", "recorrencia_fim",
+                 "lancado_por"],
     "parcelas": ["id", "despesa_id", "numero", "total",
                  "valor", "vencimento", "status", "descricao", "cartao",
                  "origem_vencimento"],
     "receitas": ["id", "descricao", "valor", "data",
-                 "categoria", "observacao", "criado_em", "recorrente", "recorrencia_fim"],
+                 "categoria", "observacao", "criado_em", "recorrente", "recorrencia_fim",
+                 "lancado_por"],
     "cartoes":  ["id", "nome", "limite", "dia_fechamento", "dia_vencimento", "criado_em"],
     "planejamento": ["id", "tipo", "descricao", "valor", "mes",
-                      "categoria", "observacao", "criado_em"],
+                      "categoria", "observacao", "criado_em", "lancado_por"],
     # Fechamentos reais de fatura, registrados manualmente pelo usuário —
     # ver logica/fechamentos.py para o motivo desta tabela existir.
     "fechamentos": ["id", "cartao", "mes_referencia", "data_fechamento",
@@ -49,7 +51,8 @@ EXPECTED_HEADERS = {
     # partir da qual a baixa automática das parcelas é calculada.
     "emprestimos": ["id", "descricao", "banco", "valor_parcela",
                      "parcelas_restantes", "proxima_data_vencimento",
-                     "valor_total_devido", "criado_em", "atualizado_em"],
+                     "valor_total_devido", "criado_em", "atualizado_em",
+                     "lancado_por"],
 }
 
 # ── CSS da aplicação ─────────────────────────────────────────────────────────────

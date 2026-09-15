@@ -12,6 +12,7 @@ import streamlit as st
 
 from config import CSS
 from auth import verificar_autenticacao
+from utils.sessao import usuario_atual, USUARIO_PADRAO
 from paginas import (
     dashboard,
     lancar_despesa,
@@ -45,6 +46,18 @@ verificar_autenticacao()
 st.markdown('<div class="main-header"><span style="font-size:1.6rem">💰</span>'
             '<span style="font-size:1.3rem;font-weight:700">Controle de Contas</span></div>',
             unsafe_allow_html=True)
+
+# Identificação de quem está usando o app — só aparece no modo multiusuário
+# (quando a seção [USUARIOS] existe nos secrets). No modo de senha única,
+# usuario_atual() devolve USUARIO_PADRAO e nada é exibido.
+_usuario = usuario_atual()
+if _usuario != USUARIO_PADRAO:
+    col_user, col_sair = st.columns([5, 1])
+    col_user.caption(f"👤 Conectado como **{_usuario}**")
+    if col_sair.button("Sair", use_container_width=True, key="btn_sair"):
+        st.session_state["autenticado"] = False
+        st.session_state.pop("usuario", None)
+        st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABAS
