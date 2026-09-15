@@ -71,7 +71,13 @@ def get_sheet(name: str):
 
 
 def sheet_to_df(ws) -> pd.DataFrame:
-    data = ws.get_all_records()
+    # B-04 · value_render_option="UNFORMATTED_VALUE": sem isso, o gspread
+    # busca os valores como exibidos na tela (ex.: "66,35", no formato BR
+    # da planilha) e depois tenta reconverter para número assumindo padrão
+    # americano — remove a vírgula pensando ser separador de milhar, e
+    # "66,35" vira 6635. Com UNFORMATTED_VALUE, a API devolve o número puro
+    # (66.35) direto, sem depender de locale nem da conversão do gspread.
+    data = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
     df = pd.DataFrame(data) if data else pd.DataFrame()
     name = ws.title
     if name in EXPECTED_HEADERS:
