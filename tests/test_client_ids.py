@@ -5,7 +5,7 @@ duplicados quando duas pessoas gravam ao mesmo tempo (acesso compartilhado).
 Nenhuma delas fala com o Google Sheets — recebem os dados já lidos.
 """
 
-from sheets.client import numero_linha_do_range, resolver_colisao_id
+from sheets.client import numero_linha_do_range, resolver_colisao_id, montar_linha_por_nome
 
 
 class TestNumeroLinhaDoRange:
@@ -70,3 +70,58 @@ class TestResolverColisaoId:
         # pode depender do tipo.
         ids = ["id", "10", "10"]
         assert resolver_colisao_id(ids, meu_id="10", minha_linha=3) == 11
+
+
+class TestMontarLinhaPorNome:
+    """
+    Esta é a função que corrige o bug real encontrado em produção: a
+    planilha `emprestimos` teve uma coluna inserida "no meio" da lista
+    declarada em EXPECTED_HEADERS (`proxima_data_vencimento`) num momento
+    posterior à criação da aba. Como a migração de headers só acrescenta
+    colunas ao FINAL da planilha física, a ordem real divergiu da ordem
+    do código — e uma escrita posicional gravava cada valor na coluna
+    errada. `montar_linha_por_nome` elimina essa classe de bug: a linha é
+    sempre montada seguindo a ordem física real (o cabeçalho passado),
+    nunca a ordem em que os campos aparecem no dict.
+    """
+
+    def test_ordem_do_dict_nao_importa_so_a_do_cabecalho(self):
+        cabecalho = ["id", "descricao", "valor"]
+        valores = {"valor": 99.9, "descricao": "Teste"}  # ordem invertida no dict
+        assert montar_linha_por_nome(cabecalho, valores, id_valor=7) == [7, "Teste", 99.9]
+
+    def test_reproduz_o_cenario_real_do_bug_coluna_no_meio(self):
+        # Cabeçalho físico real: proxima_data_vencimento foi parar no
+        # FINAL (posição 9), não na posição 6 como o código "imaginava".
+        cabecalho = [
+            "id", "descricao", "banco", "valor_parcela", "parcelas_restantes",
+            "valor_total_devido", "criado_em", "atualizado_em",
+            "proxima_data_vencimento", "lancado_por",
+        ]
+        valores = {
+            "descricao": "Empréstimo Teste", "banco": "Banco X",
+            "valor_parcela": 100.0, "parcelas_restantes": 10,
+            "proxima_data_vencimento": "2026-10-15",
+            "valor_total_devido": 1000.0,
+            "criado_em": "2026-09-15 18:00:00", "atualizado_em": "2026-09-15 18:00:00",
+            "lancado_por": "Ricardo",
+        }
+        linha = montar_linha_por_nome(cabecalho, valores, id_valor=1)
+        # Cada valor cai na coluna certa, mesmo com a ordem física "fora
+        # de ordem" em relação a quando cada campo foi criado no código.
+        assert linha[cabecalho.index("valor_total_devido")] == 1000.0
+        assert linha[cabecalho.index("proxima_data_vencimento")] == "2026-10-15"
+        assert linha[cabecalho.index("atualizado_em")] == "2026-09-15 18:00:00"
+
+    def test_coluna_ausente_no_dict_vira_string_vazia(self):
+        cabecalho = ["id", "descricao", "observacao"]
+        linha = montar_linha_por_nome(cabecalho, {"descricao": "X"}, id_valor=1)
+        assert linha == [1, "X", ""]
+
+    def test_chave_extra_no_dict_sem_coluna_correspondente_e_ignorada(self):
+        cabecalho = ["id", "descricao"]
+        valores = {"descricao": "X", "campo_que_nao_existe_na_planilha": "y"}
+        assert montar_linha_por_nome(cabecalho, valores, id_valor=1) == [1, "X"]
+
+    def test_cabecalho_vazio_devolve_linha_vazia(self):
+        assert montar_linha_por_nome([], {"qualquer": 1}, id_valor=1) == []

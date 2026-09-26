@@ -11,7 +11,7 @@ import pandas as pd
 from config import DIA_VENCIMENTO_PADRAO
 from sheets.client import (
     get_sheet, sheet_to_df, delete_rows_batch,
-    append_row_id_unico, append_rows_ids_unicos,
+    append_linha_por_nome_id_unico, append_linhas_por_nome_ids_unicos,
 )
 from sheets.loaders import carregar_cartoes, carregar_despesas, carregar_parcelas
 from logica.cartoes import resolver_vencimento_parcela
@@ -25,17 +25,20 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
                     recorrente=False, recorrencia_fim=None):
     ws_d = get_sheet("despesas")
     ws_p = get_sheet("parcelas")
-    # append_row_id_unico devolve o id realmente gravado — pode diferir do
-    # calculado se outra pessoa gravou ao mesmo tempo. É esse id que precisa
-    # ser usado para vincular as parcelas abaixo.
-    did = append_row_id_unico(ws_d, [
-        desc, valor, data, local, pag, cat,
-        cartao or "", n_parc, obs,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "sim" if recorrente else "nao",
-        recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else "",
-        usuario_atual(),
-    ])
+    # append_linha_por_nome_id_unico devolve o id realmente gravado — pode
+    # diferir do calculado se outra pessoa gravou ao mesmo tempo. É esse id
+    # que precisa ser usado para vincular as parcelas abaixo. A escrita é
+    # por NOME de coluna (não por posição), para nunca depender da ordem
+    # física real das colunas na planilha.
+    did = append_linha_por_nome_id_unico(ws_d, {
+        "descricao": desc, "valor": valor, "data": data, "local": local,
+        "pagamento": pag, "categoria": cat, "cartao": cartao or "",
+        "n_parcelas": n_parc, "observacao": obs,
+        "criado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "recorrente": "sim" if recorrente else "nao",
+        "recorrencia_fim": recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else "",
+        "lancado_por": usuario_atual(),
+    })
     if pag == "Cartão de crédito":
         df_c = carregar_cartoes()
         card_info = df_c[df_c["nome"] == cartao] if not df_c.empty else pd.DataFrame()
@@ -56,9 +59,13 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
             venc, origem = resolver_vencimento_parcela(
                 base, df_fechamento, df_vencimento, i + 1, fechamentos
             )
-            rows.append([did, i + 1, n_parc, valores[i],
-                         venc.strftime("%Y-%m-%d"), "pendente", desc, cartao, origem])
-        append_rows_ids_unicos(ws_p, rows)
+            rows.append({
+                "despesa_id": did, "numero": i + 1, "total": n_parc,
+                "valor": valores[i], "vencimento": venc.strftime("%Y-%m-%d"),
+                "status": "pendente", "descricao": desc, "cartao": cartao,
+                "origem_vencimento": origem,
+            })
+        append_linhas_por_nome_ids_unicos(ws_p, rows)
     carregar_despesas.clear()
     carregar_parcelas.clear()
 
@@ -74,6 +81,31 @@ def excluir_despesa(did: int):
         delete_rows_batch(ws_d, df_d[df_d["id"].astype(str) == str(did)].index.tolist())
     carregar_despesas.clear()
     carregar_parcelas.clear()
+
+
+def atualizar_despesa(did: int, desc: str, valor: float, data: str, local: str, cat: str, obs: str):
+    """
+    Edita os campos "seguros" de uma despesa já lançada — descrição, valor,
+    data, local, categoria e observação. NÃO mexe em `pagamento`, `cartao`,
+    `n_parcelas` nem `recorrente`: mudar a forma de pagamento depois que as
+    parcelas de cartão já foram geradas exigiria reconstruir tudo, então
+    quem precisar disso deve excluir e relançar a despesa.
+
+    Se a despesa for no cartão de crédito e o valor for alterado aqui, o
+    total das parcelas já geradas NÃO é recalculado automaticamente — a
+    tela avisa isso antes de salvar (ver paginas/lista_despesas.py).
+    """
+    ws = get_sheet("despesas")
+    df = sheet_to_df(ws)
+    for idx in df[df["id"].astype(str) == str(did)].index.tolist():
+        row_num = idx + 2
+        ws.update_cell(row_num, df.columns.get_loc("descricao") + 1, desc)
+        ws.update_cell(row_num, df.columns.get_loc("valor") + 1, valor)
+        ws.update_cell(row_num, df.columns.get_loc("data") + 1, data)
+        ws.update_cell(row_num, df.columns.get_loc("local") + 1, local)
+        ws.update_cell(row_num, df.columns.get_loc("categoria") + 1, cat)
+        ws.update_cell(row_num, df.columns.get_loc("observacao") + 1, obs)
+    carregar_despesas.clear()
 
 
 def encerrar_recorrencia_despesa(did: int):

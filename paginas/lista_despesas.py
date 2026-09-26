@@ -1,17 +1,21 @@
-"""Aba: ☰ Despesas — listagem, filtros e exclusão."""
+"""Aba: ☰ Despesas — listagem, filtros, edição e exclusão."""
+
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 
 from config import CAT_DESP, PAGAMENTOS
 from sheets.loaders import carregar_despesas
-from logica.despesas import excluir_despesa
+from logica.despesas import excluir_despesa, atualizar_despesa
 from utils.datas import seletor_mes_ano
-from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao
+from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def render():
     st.subheader("Despesas")
+    exibir_mensagem_pendente()
     st.markdown("##### Filtros de visualização")
     fmes = seletor_mes_ano("lista")
 
@@ -65,6 +69,70 @@ def render():
         desc_excluir = df_filtrado.iloc[idx_sel]["descricao"]
         val_excluir  = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])
         st.warning(f"⚠️ Despesa selecionada: **#{id_excluir} — {desc_excluir} ({val_excluir})**")
+
+        # ── Edição ───────────────────────────────────────────────────────
+        registro = df_filtrado.iloc[idx_sel]
+        with st.expander("✏️ Editar despesa", expanded=False):
+            if registro["pagamento"] == "Cartão de crédito":
+                st.caption(
+                    "⚠️ Esta despesa é do cartão de crédito. Descrição, data, local, "
+                    "categoria e observação podem ser editados livremente. Se você "
+                    "mudar o **valor**, as parcelas já geradas na aba 💳 Cartão de "
+                    "Crédito **não são recalculadas automaticamente** — ajuste-as lá "
+                    "manualmente se precisar."
+                )
+
+            # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
+            ce1, _ = st.columns(2)
+            with ce1:
+                valor_edit_txt = campo_valor_moeda(
+                    "Valor (R$)", base_key=f"edit_desp_valor_{id_excluir}",
+                    value=fmt_moeda(registro["valor"]).replace("R$ ", ""),
+                )
+
+            with st.form(f"form_editar_despesa_{id_excluir}"):
+                ee1, ee2 = st.columns(2)
+                desc_edit = ee1.text_input("Descrição", value=str(registro["descricao"]))
+                local_edit = ee2.text_input("Local / Estabelecimento", value=str(registro["local"]))
+
+                ee3, ee4 = st.columns(2)
+                try:
+                    data_atual = datetime.strptime(str(registro["data"]), "%Y-%m-%d").date()
+                except Exception:
+                    data_atual = datetime.today().date()
+                data_edit = ee3.date_input("Data", value=data_atual, format="DD/MM/YYYY")
+                cat_atual = str(registro["categoria"])
+                idx_cat = ([""] + CAT_DESP).index(cat_atual) if cat_atual in CAT_DESP else 0
+                cat_edit = ee4.selectbox("Categoria", [""] + CAT_DESP, index=idx_cat)
+
+                obs_edit = st.text_input("Observação", value=str(registro.get("observacao", "")))
+                salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",
+                                                       use_container_width=True)
+
+            if salvar_edicao:
+                erros_edit = []
+                if not desc_edit.strip():
+                    erros_edit.append("Preencha a descrição.")
+                try:
+                    v_edit = parse_valor(valor_edit_txt)
+                    if not (0 < v_edit <= 1_000_000):
+                        erros_edit.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
+                except Exception:
+                    erros_edit.append("Valor inválido.")
+                    v_edit = 0
+
+                if erros_edit:
+                    for e in erros_edit: st.error(e)
+                else:
+                    try:
+                        atualizar_despesa(id_excluir, desc_edit.strip(), v_edit,
+                                          data_edit.strftime("%Y-%m-%d"), local_edit.strip(),
+                                          cat_edit, obs_edit.strip())
+                        concluir_com_sucesso(f"✅ Despesa #{id_excluir} atualizada com sucesso!")
+                    except Exception as e:
+                        st.error(f"Erro ao atualizar: {e}")
+
+        # ── Exclusão ─────────────────────────────────────────────────────
         st.caption("Esta ação também excluirá todas as parcelas vinculadas a esta despesa.")
 
         # Item 2 · Confirmação explícita antes de excluir despesa

@@ -1,16 +1,21 @@
 """Aba: 🏦 Conta Corrente — extrato consolidado de receitas e despesas."""
 
+from datetime import datetime
+
 import pandas as pd
 import streamlit as st
 
+from config import CAT_REC
 from sheets.loaders import carregar_despesas, carregar_receitas
-from logica.receitas import excluir_receita
+from logica.receitas import excluir_receita, atualizar_receita
 from utils.datas import seletor_mes_ano
-from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao
+from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def render():
     st.subheader("Conta Corrente")
+    exibir_mensagem_pendente()
     st.markdown("##### Filtro de Período")
     mes_cc = seletor_mes_ano("cc")
 
@@ -41,6 +46,7 @@ def render():
         for _, row in rec_cc.iterrows():
             movs.append({"Data": row["data"], "Descrição": row["descricao"], "Tipo": "Receita",
                          "Categoria": row.get("categoria", ""), "Valor": float(row["valor"]),
+                         "Observação": row.get("observacao", ""),
                          "Lançado por": row.get("lancado_por", ""),
                          "ID": row["id"], "_tipo": "rec"})
     if not desp_cc.empty:
@@ -81,6 +87,56 @@ def render():
         if tipo_sel == "rec":
             st.warning(f"⚠️ Receita selecionada: **#{id_sel} — {desc_sel} ({val_sel})**")
 
+            # ── Edição ───────────────────────────────────────────────────
+            with st.expander("✏️ Editar receita", expanded=False):
+                # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
+                ce1, _ = st.columns(2)
+                with ce1:
+                    valor_edit_txt = campo_valor_moeda(
+                        "Valor (R$)", base_key=f"edit_rec_valor_{id_sel}",
+                        value=fmt_moeda(mov_sel["Valor"]).replace("R$ ", ""),
+                    )
+
+                with st.form(f"form_editar_receita_{id_sel}"):
+                    re1, re2 = st.columns(2)
+                    desc_edit = re1.text_input("Descrição", value=str(mov_sel["Descrição"]))
+                    try:
+                        data_atual = datetime.strptime(str(mov_sel["Data"]), "%Y-%m-%d").date()
+                    except Exception:
+                        data_atual = datetime.today().date()
+                    data_edit = re2.date_input("Data", value=data_atual, format="DD/MM/YYYY")
+
+                    cat_atual = str(mov_sel["Categoria"])
+                    idx_cat = ([""] + CAT_REC).index(cat_atual) if cat_atual in CAT_REC else 0
+                    cat_edit = st.selectbox("Categoria", [""] + CAT_REC, index=idx_cat)
+                    obs_edit = st.text_input("Observação", value=str(mov_sel.get("Observação", "")))
+
+                    salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",
+                                                           use_container_width=True)
+
+                if salvar_edicao:
+                    erros_edit = []
+                    if not desc_edit.strip():
+                        erros_edit.append("Preencha a descrição.")
+                    try:
+                        v_edit = parse_valor(valor_edit_txt)
+                        if not (0 < v_edit <= 1_000_000):
+                            erros_edit.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
+                    except Exception:
+                        erros_edit.append("Valor inválido.")
+                        v_edit = 0
+
+                    if erros_edit:
+                        for e in erros_edit: st.error(e)
+                    else:
+                        try:
+                            atualizar_receita(id_sel, desc_edit.strip(), v_edit,
+                                              data_edit.strftime("%Y-%m-%d"), cat_edit, obs_edit.strip())
+                            concluir_com_sucesso(f"✅ Receita #{id_sel} atualizada com sucesso!")
+                        except Exception as e:
+                            st.error(f"Erro ao atualizar: {e}")
+
+            # ── Exclusão ─────────────────────────────────────────────────
             # Item 2 · Confirmação explícita antes de excluir receita
             confirmar_r = st.checkbox(
                 f"Confirmo a exclusão da receita #{id_sel}",

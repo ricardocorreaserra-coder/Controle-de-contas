@@ -19,7 +19,7 @@ import streamlit as st
 
 from sheets.client import (
     get_sheet, sheet_to_df, delete_rows_batch,
-    append_row_id_unico, append_rows_ids_unicos,
+    append_linha_por_nome_id_unico, append_linhas_por_nome_ids_unicos,
 )
 from sheets.loaders import carregar_despesas, carregar_receitas, carregar_parcelas, carregar_planejamento
 from utils.datas import fmt_mes_str_pt, mes_ativo_recorrencia, proximos_12_meses
@@ -218,20 +218,25 @@ def invalidar_cache_panorama():
 
 def salvar_planejamento(tipo, desc, valor, mes, cat, obs):
     ws = get_sheet("planejamento")
-    append_row_id_unico(ws, [tipo, desc, valor, mes, cat, obs,
-                             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                             usuario_atual()])
+    append_linha_por_nome_id_unico(ws, {
+        "tipo": tipo, "descricao": desc, "valor": valor, "mes": mes,
+        "categoria": cat, "observacao": obs,
+        "criado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "lancado_por": usuario_atual(),
+    })
     carregar_planejamento.clear()
 
 
 def salvar_planejamento_replicado(tipo, desc, valor, meses, cat, obs):
     ws = get_sheet("planejamento")
-    rows = []
     autor = usuario_atual()
-    for mes in meses:
-        rows.append([tipo, desc, valor, mes, cat, obs,
-                     datetime.now().strftime("%Y-%m-%d %H:%M:%S"), autor])
-    append_rows_ids_unicos(ws, rows)
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rows = [
+        {"tipo": tipo, "descricao": desc, "valor": valor, "mes": mes,
+         "categoria": cat, "observacao": obs, "criado_em": agora, "lancado_por": autor}
+        for mes in meses
+    ]
+    append_linhas_por_nome_ids_unicos(ws, rows)
     carregar_planejamento.clear()
 
 

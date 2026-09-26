@@ -19,7 +19,7 @@ REGRAS DE NEGÓCIO (adaptadas a pedido do usuário):
 
 from datetime import date, datetime
 
-from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_row_id_unico
+from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_linha_por_nome_id_unico
 from sheets.loaders import carregar_emprestimos
 from utils.datas import add_months
 from utils.sessao import usuario_atual
@@ -78,11 +78,24 @@ def salvar_emprestimo(descricao: str, banco: str, valor_parcela: float,
     ws = get_sheet("emprestimos")
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     valor_total = calcular_valor_total_devido(valor_parcela, parcelas_restantes)
-    append_row_id_unico(ws, [
-        descricao, banco, valor_parcela, parcelas_restantes,
-        proxima_data_vencimento.strftime("%Y-%m-%d"), valor_total, agora, agora,
-        usuario_atual(),
-    ])
+    # Escrita por NOME de coluna, não por posição: a tabela `emprestimos`
+    # teve uma coluna (proxima_data_vencimento) adicionada "no meio" da
+    # lista declarada em EXPECTED_HEADERS num momento posterior à criação
+    # da planilha — como a migração de headers só acrescenta colunas ao
+    # FINAL da planilha real, a ordem física diverge da ordem do código.
+    # Uma escrita posicional aqui grava valores na coluna errada. Ver
+    # sheets/client.py::append_linha_por_nome_id_unico para o detalhe.
+    append_linha_por_nome_id_unico(ws, {
+        "descricao": descricao,
+        "banco": banco,
+        "valor_parcela": valor_parcela,
+        "parcelas_restantes": parcelas_restantes,
+        "proxima_data_vencimento": proxima_data_vencimento.strftime("%Y-%m-%d"),
+        "valor_total_devido": valor_total,
+        "criado_em": agora,
+        "atualizado_em": agora,
+        "lancado_por": usuario_atual(),
+    })
     carregar_emprestimos.clear()
 
 

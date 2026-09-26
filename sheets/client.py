@@ -71,13 +71,7 @@ def get_sheet(name: str):
 
 
 def sheet_to_df(ws) -> pd.DataFrame:
-    # B-04 · value_render_option="UNFORMATTED_VALUE": sem isso, o gspread
-    # busca os valores como exibidos na tela (ex.: "66,35", no formato BR
-    # da planilha) e depois tenta reconverter para número assumindo padrão
-    # americano — remove a vírgula pensando ser separador de milhar, e
-    # "66,35" vira 6635. Com UNFORMATTED_VALUE, a API devolve o número puro
-    # (66.35) direto, sem depender de locale nem da conversão do gspread.
-    data = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
+    data = ws.get_all_records()
     df = pd.DataFrame(data) if data else pd.DataFrame()
     name = ws.title
     if name in EXPECTED_HEADERS:
@@ -161,39 +155,67 @@ def _corrigir_id_se_colidiu(ws, id_gravado: int, linha: int) -> int:
     return novo
 
 
-def append_row_id_unico(ws, valores_sem_id: list) -> int:
+# ── Escrita por NOME de coluna (imune à ordem física da planilha) ─────────────
+#
+# PROBLEMA (descoberto em produção): `_migrar_headers_se_preciso` só ACRESCENTA
+# colunas que faltam ao FINAL da planilha — nunca reordena. Se uma coluna nova
+# foi pensada para ficar "no meio" da lista em EXPECTED_HEADERS (como aconteceu
+# com `proxima_data_vencimento` em `emprestimos`), a ordem FÍSICA real da
+# planilha diverge silenciosamente da ordem declarada no código. Uma escrita
+# posicional (`ws.append_row([...])`) nesse cenário grava cada valor na coluna
+# errada, corrompendo os dados sem lançar nenhum erro.
+#
+# As funções abaixo são o único jeito de gravar linhas neste projeto: leem a
+# ordem REAL das colunas direto da planilha (`ws.row_values(1)`) e montam a
+# linha a gravar de acordo com ela, não com a ordem do config.py.
+
+def montar_linha_por_nome(cabecalho: list, valores: dict, id_valor) -> list:
     """
-    Acrescenta uma linha cujo primeiro campo é o `id`, garantindo que esse
-    id não fique duplicado mesmo se outra pessoa gravar ao mesmo tempo.
-    Devolve o ID efetivamente gravado (pode diferir do inicial se houve
-    colisão) — importante para vincular registros filhos, como as parcelas
-    de uma despesa.
+    Função pura: dado o cabeçalho real de uma planilha (`ws.row_values(1)`),
+    um dict {nome_da_coluna: valor} e o id a usar, devolve a linha pronta
+    para `ws.append_row`, na ORDEM FÍSICA REAL das colunas — não na ordem
+    em que os campos foram declarados no código.
+
+    A coluna chamada "id" recebe `id_valor`; qualquer outra coluna do
+    cabeçalho ausente em `valores` recebe string vazia (nunca lança erro
+    por campo faltando, para tolerar colunas que a tela atual não usa).
     """
+    return [id_valor if col == "id" else valores.get(col, "") for col in cabecalho]
+
+
+def append_linha_por_nome_id_unico(ws, valores: dict) -> int:
+    """
+    Monta e grava uma linha respeitando a ordem REAL das colunas já
+    existentes na planilha, a partir de um dict {nome_da_coluna: valor}
+    (sem incluir "id" — ele é gerado automaticamente). Colunas existentes
+    na planilha mas ausentes em `valores` são gravadas como string vazia.
+
+    Também aplica a mesma proteção contra ID duplicado (ver
+    `resolver_colisao_id`). Devolve o id efetivamente gravado.
+    """
+    cabecalho = ws.row_values(1)
     id_inicial = next_id(ws)
-    resposta = ws.append_row([id_inicial] + list(valores_sem_id))
-    linha = numero_linha_do_range(
-        (resposta or {}).get("updates", {}).get("updatedRange")
-    )
-    return _corrigir_id_se_colidiu(ws, id_inicial, linha)
+    linha = montar_linha_por_nome(cabecalho, valores, id_inicial)
+    resposta = ws.append_row(linha)
+    linha_num = numero_linha_do_range((resposta or {}).get("updates", {}).get("updatedRange"))
+    return _corrigir_id_se_colidiu(ws, id_inicial, linha_num)
 
 
-def append_rows_ids_unicos(ws, linhas_sem_id: list) -> list:
-    """
-    Versão em lote de `append_row_id_unico`: recebe as linhas SEM o id e
-    atribui ids sequenciais a partir do próximo disponível, conferindo
-    colisão linha a linha depois da escrita. Devolve a lista de ids
-    efetivamente gravados, na mesma ordem.
-    """
-    if not linhas_sem_id:
+def append_linhas_por_nome_ids_unicos(ws, lista_valores: list) -> list:
+    """Versão em lote de `append_linha_por_nome_id_unico`: recebe uma lista
+    de dicts {nome_da_coluna: valor} (sem "id") e devolve a lista de ids
+    efetivamente gravados, na mesma ordem."""
+    if not lista_valores:
         return []
+    cabecalho = ws.row_values(1)
     id_base = next_id(ws)
-    payload = [[id_base + i] + list(valores) for i, valores in enumerate(linhas_sem_id)]
+    payload = []
+    for i, valores in enumerate(lista_valores):
+        payload.append(montar_linha_por_nome(cabecalho, valores, id_base + i))
     resposta = ws.append_rows(payload)
-    primeira_linha = numero_linha_do_range(
-        (resposta or {}).get("updates", {}).get("updatedRange")
-    )
+    primeira_linha = numero_linha_do_range((resposta or {}).get("updates", {}).get("updatedRange"))
     if primeira_linha is None:
-        return [linha[0] for linha in payload]
+        return [id_base + i for i in range(len(payload))]
     return [
         _corrigir_id_se_colidiu(ws, id_base + i, primeira_linha + i)
         for i in range(len(payload))

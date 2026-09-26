@@ -17,7 +17,7 @@ def _on_blur_valor_moeda(key: str):
     st.session_state[key] = formatar_input_moeda(st.session_state.get(key, ""))
 
 
-def campo_valor_moeda(label: str, base_key: str, placeholder: str = "0,00") -> str:
+def campo_valor_moeda(label: str, base_key: str, placeholder: str = "0,00", value: str = None) -> str:
     """
     Campo de texto para valores em R$ que se auto-formata ao perder o
     foco, preenchendo as casas decimais a partir da direita — digitar
@@ -37,10 +37,17 @@ def campo_valor_moeda(label: str, base_key: str, placeholder: str = "0,00") -> s
     sobrescrever diretamente o valor de um widget que já foi instanciado
     nesta mesma execução do script.
 
+    `value`, se informado, pré-preenche o campo — usado em telas de EDIÇÃO,
+    para já mostrar o valor atual do registro (formatado, ex.: "1.234,56",
+    sem o "R$"). Só tem efeito na primeira vez que essa key é criada; não
+    sobrescreve o que o usuário já digitou em execuções seguintes.
+
     Retorna o texto atualmente no campo.
     """
     versao = st.session_state.get(f"_v__{base_key}", 0)
     key = f"{base_key}__{versao}"
+    if value is not None and key not in st.session_state:
+        st.session_state[key] = value
     return st.text_input(
         label, key=key, placeholder=placeholder,
         on_change=_on_blur_valor_moeda, args=(key,),

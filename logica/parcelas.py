@@ -11,7 +11,7 @@ import gspread
 import pandas as pd
 
 from config import DIA_VENCIMENTO_PADRAO
-from sheets.client import get_sheet, sheet_to_df, append_rows_ids_unicos
+from sheets.client import get_sheet, sheet_to_df, append_linhas_por_nome_ids_unicos
 from sheets.loaders import carregar_cartoes, carregar_parcelas
 from utils.datas import add_months
 
@@ -45,9 +45,13 @@ def salvar_parcela_manual(cartao, desc, valor_parcela, num_inicial, num_total, v
         venc    = add_months(base_date, i)
         max_day = calendar.monthrange(venc.year, venc.month)[1]
         venc    = venc.replace(day=min(df_vencimento, max_day))
-        rows.append([-1, num_inicial + i, num_total, valor_parcela,
-                     venc.strftime("%Y-%m-%d"), "pendente", desc, cartao, "manual"])
-    append_rows_ids_unicos(ws_p, rows)
+        rows.append({
+            "despesa_id": -1, "numero": num_inicial + i, "total": num_total,
+            "valor": valor_parcela, "vencimento": venc.strftime("%Y-%m-%d"),
+            "status": "pendente", "descricao": desc, "cartao": cartao,
+            "origem_vencimento": "manual",
+        })
+    append_linhas_por_nome_ids_unicos(ws_p, rows)
     carregar_parcelas.clear()
 
 
