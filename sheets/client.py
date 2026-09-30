@@ -71,7 +71,17 @@ def get_sheet(name: str):
 
 
 def sheet_to_df(ws) -> pd.DataFrame:
-    data = ws.get_all_records()
+    # value_render_option="UNFORMATTED_VALUE": pede ao Sheets o número BRUTO
+    # da célula, não o texto formatado pela interface (que segue o locale
+    # pt-BR da planilha, ex. 1.5 exibido como "1,5"). Sem isso, o gspread
+    # tenta converter esse texto formatado em número usando uma lógica que
+    # assume o padrão americano (vírgula = separador de milhar) e acaba
+    # apagando a vírgula decimal brasileira: "1,5" -> "15" -> 15 (em vez de
+    # 1.5). Bug descoberto em produção: uma despesa de R$ 1,50 foi salva
+    # corretamente, mas ao ser recarregada aparecia como R$ 15,00 — porque
+    # nenhum valor testado antes tinha centavos (todos eram "redondos", sem
+    # vírgula nenhuma para o gspread confundir).
+    data = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
     df = pd.DataFrame(data) if data else pd.DataFrame()
     name = ws.title
     if name in EXPECTED_HEADERS:
