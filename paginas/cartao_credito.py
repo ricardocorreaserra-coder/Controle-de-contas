@@ -103,8 +103,10 @@ def _sub_parcelas(df_p, df_p2, hoje):
                            on_select="rerun", selection_mode="single-row", key="df_parcelas_list")
 
     st.markdown("#### Ações da Parcela")
-    if event_p.selection.rows:
-        idx_sel  = event_p.selection.rows[0]
+    # Ignora seleção "velha" (posição fora do intervalo após filtro/baixa/exclusão)
+    rows_p = [i for i in event_p.selection.rows if 0 <= i < len(df_filtrado)]
+    if rows_p:
+        idx_sel  = rows_p[0]
         pid_acao = int(df_filtrado.iloc[idx_sel]["id"])
         desc_p   = df_filtrado.iloc[idx_sel]["descricao"]
         val_p    = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])
@@ -303,10 +305,13 @@ def _sub_configuracoes():
         df_c_show["limite"] = df_c_show["limite"].apply(fmt_moeda)
         df_c_show.columns   = ["ID", "Nome do Cartão", "Limite de Crédito", "Dia do Fechamento", "Dia do Vencimento"]
         event_c = st.dataframe(df_c_show, use_container_width=True, hide_index=True,
-                               on_select="rerun", selection_mode="single-row", key="df_cartoes_config_list")
+                               on_select="rerun", selection_mode="single-row",
+                               key=f"df_cartoes_config_list_{st.session_state.get('_ver_df_cartoes', 0)}")
 
-        if event_c.selection.rows:
-            idx_sel     = event_c.selection.rows[0]
+        # Ignora seleção "velha" (posição fora do intervalo após exclusão/recarga)
+        rows_c = [i for i in event_c.selection.rows if 0 <= i < len(df_c)]
+        if rows_c:
+            idx_sel     = rows_c[0]
             id_cartao   = int(df_c.iloc[idx_sel]["id"])
             nome_cartao = df_c.iloc[idx_sel]["nome"]
             st.warning(f"⚠️ Cartão selecionado: **#{id_cartao} — {nome_cartao}**")
@@ -337,6 +342,8 @@ def _sub_configuracoes():
                                  use_container_width=True, key="btn_del_card"):
                         try:
                             excluir_cartao(id_cartao)
+                            # Troca a key da tabela para limpar a seleção guardada
+                            st.session_state["_ver_df_cartoes"] = st.session_state.get("_ver_df_cartoes", 0) + 1
                             st.success(f"Cartão '{nome_cartao}' excluído com sucesso!")
                             st.rerun()
                         except Exception as e:
@@ -505,8 +512,9 @@ def _sub_fechamentos():
 
     event_f = st.dataframe(df_fech_show, use_container_width=True, hide_index=True,
                            on_select="rerun", selection_mode="single-row", key="df_fechamentos_list")
-    if event_f.selection.rows:
-        idx_sel = event_f.selection.rows[0]
+    rows_f = [i for i in event_f.selection.rows if 0 <= i < len(registros)]
+    if rows_f:
+        idx_sel = rows_f[0]
         id_f    = int(registros[idx_sel]["id"])
         if st.button("🗑 Excluir este fechamento", type="primary", use_container_width=True, key="btn_excl_fech"):
             try:
