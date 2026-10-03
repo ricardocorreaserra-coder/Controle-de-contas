@@ -32,7 +32,7 @@ EXPECTED_HEADERS = {
                  "lancado_por"],
     "parcelas": ["id", "despesa_id", "numero", "total",
                  "valor", "vencimento", "status", "descricao", "cartao",
-                 "origem_vencimento"],
+                 "origem_vencimento", "data_compra"],
     "receitas": ["id", "descricao", "valor", "data",
                  "categoria", "observacao", "criado_em", "recorrente", "recorrencia_fim",
                  "lancado_por"],

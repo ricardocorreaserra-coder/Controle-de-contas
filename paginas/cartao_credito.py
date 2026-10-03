@@ -10,7 +10,10 @@ import streamlit as st
 
 from sheets.loaders import carregar_parcelas, carregar_despesas, carregar_cartoes, obter_nomes_cartoes
 from logica.cartoes import salvar_cartao, excluir_cartao, cartao_tem_vinculos, estimar_vencimento_parcela
-from logica.parcelas import salvar_parcela_manual, atualizar_parcela, baixar_fatura_mes, atualizar_vencimento_parcela
+from logica.parcelas import (
+    salvar_parcela_manual, atualizar_parcela, baixar_fatura_mes, atualizar_vencimento_parcela,
+    alterar_lancamento_parcela,
+)
 from logica.fechamentos import (
     fechamentos_ordenados_por_cartao, salvar_fechamento, excluir_fechamento,
     detectar_buracos_fechamentos,
@@ -45,6 +48,9 @@ def _preparar_df_parcelas(df_p: pd.DataFrame, df_d: pd.DataFrame) -> pd.DataFram
 
 def _sub_parcelas(df_p, df_p2, hoje):
     st.subheader("Cartão de Crédito — Parcelas")
+    msg_alt = st.session_state.pop("_msg_alt_parcela", None)
+    if msg_alt:
+        st.success(msg_alt)
     if df_p.empty or df_p2.empty:
         st.info("Nenhuma parcela cadastrada.")
         return
@@ -91,12 +97,17 @@ def _sub_parcelas(df_p, df_p2, hoje):
     df_filtrado["Status"] = df_filtrado.apply(status_label, axis=1)
     df_filtrado["Origem"] = df_filtrado.apply(origem_label, axis=1)
 
-    cols_show = [c for c in ["id", "descricao", "cartao", "numero", "total", "valor", "vencimento", "Status", "Origem"] if c in df_filtrado.columns]
+    cols_show = [c for c in ["id", "descricao", "cartao", "numero", "total", "valor", "data_compra", "vencimento", "Status", "Origem"] if c in df_filtrado.columns]
     df_show = df_filtrado[cols_show].copy()
     df_show["valor"]      = df_show["valor"].apply(fmt_moeda)
     df_show["vencimento"] = df_show["vencimento"].apply(converter_data_para_exibicao)
+    if "data_compra" in df_show.columns:
+        # Parcelas sem data da compra (lançamentos antigos) ficam em branco
+        df_show["data_compra"] = df_show["data_compra"].apply(
+            lambda v: converter_data_para_exibicao(v) if str(v).strip() not in ("", "nan", "None") else "")
     df_show.rename(columns={"id": "ID", "descricao": "Despesa/Item", "cartao": "Cartão",
                             "numero": "Parc.", "total": "Total", "valor": "Valor",
+                            "data_compra": "Data da Compra",
                             "vencimento": "Vencimento"}, inplace=True)
 
     event_p = st.dataframe(df_show, use_container_width=True, hide_index=True,
@@ -148,6 +159,8 @@ def _sub_parcelas(df_p, df_p2, hoje):
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao corrigir vencimento: {e}")
+
+        _form_alterar_lancamento(df_filtrado.iloc[idx_sel], pid_acao)
     else:
         st.info("💡 Clique em uma parcela na tabela acima para liberar as ações de pagamento/estorno.")
 
@@ -180,6 +193,72 @@ def _sub_parcelas(df_p, df_p2, hoje):
             st.rerun()
         except Exception as e:
             st.error(f"Erro ao baixar fatura: {e}")
+
+
+def _form_alterar_lancamento(row, pid_acao):
+    """Formulário para alterar os dados de uma parcela (ou da compra inteira)."""
+    manual = str(row.get("despesa_id", "")).strip() == "-1"
+
+    with st.expander("✏️ Alterar lançamento", expanded=False):
+        if manual:
+            st.caption("Lançamento histórico: você pode alterar descrição, cartão, valor e data da compra.")
+        else:
+            st.caption(
+                "Esta parcela veio de uma despesa lançada na aba Despesas. Aqui só o **valor** pode ser "
+                "alterado; descrição, cartão e data pertencem à despesa."
+            )
+
+        nomes_cartoes = obter_nomes_cartoes()
+        cartao_atual  = str(row.get("cartao", ""))
+        if cartao_atual and cartao_atual not in nomes_cartoes:
+            nomes_cartoes = [cartao_atual] + nomes_cartoes
+
+        compra_atual = pd.to_datetime(row.get("data_compra", ""), errors="coerce")
+        compra_atual = None if pd.isna(compra_atual) else compra_atual.date()
+
+        with st.form(f"form_alterar_parcela_{pid_acao}"):
+            if manual:
+                c1, c2 = st.columns(2)
+                nova_desc   = c1.text_input("Descrição", value=str(row.get("descricao", "")),
+                                            key=f"alt_desc_{pid_acao}")
+                novo_cartao = c2.selectbox("Cartão", nomes_cartoes,
+                                           index=nomes_cartoes.index(cartao_atual) if cartao_atual in nomes_cartoes else 0,
+                                           key=f"alt_cartao_{pid_acao}")
+            c3, c4 = st.columns(2)
+            novo_valor = c3.number_input("Valor da parcela (R$)", min_value=0.01, max_value=1_000_000.0,
+                                         value=max(float(row.get("valor", 0.01) or 0.01), 0.01),
+                                         step=0.01, format="%.2f", key=f"alt_valor_{pid_acao}")
+            if manual:
+                nova_compra = c4.date_input("Data da compra", value=compra_atual,
+                                            min_value=date(2000, 1, 1), max_value=date.today(),
+                                            format="DD/MM/YYYY", key=f"alt_compra_{pid_acao}")
+
+            escopo_label = st.radio(
+                "Aplicar a",
+                ["Apenas esta parcela", "Toda a compra"],
+                horizontal=True, key=f"alt_escopo_{pid_acao}",
+                help="'Toda a compra' altera descrição, cartão e data da compra em todas as parcelas dela "
+                     "(pagas e pendentes) e o valor somente nas parcelas pendentes.",
+            )
+            salvar_alt = st.form_submit_button("💾 Salvar alterações", type="primary", use_container_width=True)
+
+        if salvar_alt:
+            escopo = "compra" if escopo_label == "Toda a compra" else "parcela"
+            try:
+                n = alterar_lancamento_parcela(
+                    pid_acao,
+                    valor=float(novo_valor),
+                    descricao=nova_desc.strip() if manual else None,
+                    cartao=novo_cartao if manual else None,
+                    data_compra=nova_compra.strftime("%Y-%m-%d") if (manual and nova_compra) else None,
+                    escopo=escopo,
+                )
+                st.session_state["_msg_alt_parcela"] = f"Lançamento alterado com sucesso ({n} parcela(s) atualizada(s))."
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+            except Exception as e:
+                st.error(f"Erro ao alterar lançamento: {e}")
 
 
 def _sub_faturas_futuras(df_p, df_p2):
@@ -256,8 +335,12 @@ def _sub_lancar_historico():
         parc_init_m  = col_m4.selectbox("Próxima Parcela a vencer *", list(range(1, 49)), index=0, key="m_init")
         parc_total_m = col_m5.selectbox("Total de Parcelas da Compra *", list(range(1, 49)), index=11, key="m_total")
 
-        venc_init_m = st.columns(1)[0].date_input("Vencimento da próxima parcela a vencer *",
-                                                   value=date.today(), format="DD/MM/YYYY", key="m_date")
+        col_m6, col_m7 = st.columns(2)
+        data_compra_m = col_m6.date_input("Data da compra (opcional)", value=None,
+                                          min_value=date(2000, 1, 1), max_value=date.today(),
+                                          format="DD/MM/YYYY", key="m_data_compra")
+        venc_init_m = col_m7.date_input("Vencimento da próxima parcela a vencer *",
+                                        value=date.today(), format="DD/MM/YYYY", key="m_date")
         obs_m      = st.text_input("Observação (opcional)", key="m_obs")
         sub_manual = st.form_submit_button("✔ Salvar Parcelas Históricas", type="primary", use_container_width=True)
 
@@ -265,6 +348,8 @@ def _sub_lancar_historico():
         erros_m = []
         if not desc_m.strip(): erros_m.append("Preencha a descrição.")
         if parc_init_m > parc_total_m: erros_m.append("A próxima parcela não pode ser maior que o total.")
+        if data_compra_m and data_compra_m > venc_init_m:
+            erros_m.append("A data da compra não pode ser posterior ao vencimento da próxima parcela.")
         try:
             v_p = parse_valor(val_parc_m)
             if not (0 < v_p <= 1_000_000):
@@ -282,7 +367,8 @@ def _sub_lancar_historico():
                 st.session_state["salvando_parcela"] = True
                 try:
                     salvar_parcela_manual(card_m, desc_m.strip(), v_p, parc_init_m, parc_total_m,
-                                          venc_init_m.strftime("%Y-%m-%d"), obs_m.strip())
+                                          venc_init_m.strftime("%Y-%m-%d"), obs_m.strip(),
+                                          data_compra_m.strftime("%Y-%m-%d") if data_compra_m else None)
                     st.session_state["salvando_parcela"] = False
                     concluir_com_sucesso(f"Parcelas históricas do item '{desc_m}' cadastradas com sucesso!",
                                          campo_valor_base_key="m_val")
