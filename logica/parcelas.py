@@ -5,7 +5,7 @@ de fatura em lote.
 """
 
 import calendar
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import gspread
 import pandas as pd
@@ -14,6 +14,30 @@ from config import DIA_VENCIMENTO_PADRAO
 from sheets.client import get_sheet, sheet_to_df, append_linhas_por_nome_ids_unicos, delete_rows_batch
 from sheets.loaders import carregar_cartoes, carregar_parcelas
 from utils.datas import add_months
+
+
+def _data_iso(v) -> str:
+    """
+    Normaliza uma data lida da planilha para 'YYYY-MM-DD'. Aceita texto ISO,
+    'DD/MM/YYYY' e o número serial do Google Sheets (ex.: 25569 = 01/01/1970),
+    que aparece quando a célula foi convertida em data pelo próprio Sheets.
+    """
+    t = str(v).strip() if v is not None else ""
+    if not t or t.lower() in ("nan", "none", "nat"):
+        return ""
+    try:
+        n = float(t.replace(",", "."))
+        if 20000 < n < 80000:
+            return (datetime(1899, 12, 30) + timedelta(days=int(n))).date().isoformat()
+    except ValueError:
+        pass
+    if len(t) >= 10 and t[4] == "-" and t[7] == "-":
+        return t[:10]
+    if "/" in t:
+        dt = pd.to_datetime(t, dayfirst=True, errors="coerce")
+        if not pd.isna(dt):
+            return dt.date().isoformat()
+    return t
 
 
 def valores_parcelas(valor_total: float, n_parc: int) -> list:
@@ -210,7 +234,7 @@ def corrigir_total_parcelas(pid, novo_total):
         for i in manter.index
     ]
     if updates:
-        ws.batch_update(updates)
+        ws.batch_update(updates, value_input_option="RAW")
 
     removidas = criadas = 0
     if len(remover):
@@ -220,7 +244,7 @@ def corrigir_total_parcelas(pid, novo_total):
     elif novo_total > num_max:
         # 2b) aumentar: cria as parcelas que faltam
         ultima = g.loc[g["_n"].idxmax()]
-        base = datetime.strptime(str(ultima["vencimento"])[:10], "%Y-%m-%d").date()
+        base = datetime.strptime(_data_iso(ultima["vencimento"]), "%Y-%m-%d").date()
         data_compra = str(ultima.get("data_compra", "")).strip()
         novas = []
         for k in range(1, novo_total - num_max + 1):
@@ -284,7 +308,7 @@ def alterar_lancamento_parcela(pid, valor=None, descricao=None, cartao=None,
         raise ValueError("A descrição não pode ficar vazia.")
     if manual and data_compra:
         escopo_idx_v = grupo.index if escopo == "compra" else [idx_ref]
-        menor_venc = min(str(df.loc[i, "vencimento"]) for i in escopo_idx_v)
+        menor_venc = min(_data_iso(df.loc[i, "vencimento"]) for i in escopo_idx_v)
         if str(data_compra) > menor_venc:
             raise ValueError("A data da compra não pode ser posterior ao vencimento da parcela.")
 
@@ -321,7 +345,7 @@ def alterar_lancamento_parcela(pid, valor=None, descricao=None, cartao=None,
                 "range": gspread.utils.rowcol_to_a1(i + 2, col_num),
                 "values": [[novo]],
             })
-    ws.batch_update(updates)
+    ws.batch_update(updates, value_input_option="RAW")
     carregar_parcelas.clear()
     return len(mudancas)
 
@@ -332,16 +356,25 @@ def atualizar_vencimento_parcela(pid: int, nova_data):
     exemplo, quando o fechamento real da fatura acabou sendo diferente da
     estimativa automática e ainda não havia um fechamento registrado no
     momento da compra. A parcela passa a ter origem 'manual'.
+
+    A data é gravada como TEXTO ('YYYY-MM-DD', value_input_option RAW), igual
+    ao restante da planilha. Com USER_ENTERED o Sheets converteria a célula em
+    data e ela voltaria como número (ex.: 25569) na leitura.
     """
     ws = get_sheet("parcelas")
     df = sheet_to_df(ws)
-    col_venc = df.columns.get_loc("vencimento") + 1
-    tem_origem = "origem_vencimento" in df.columns
-    col_origem = df.columns.get_loc("origem_vencimento") + 1 if tem_origem else None
+    cabecalho = ws.row_values(1)
+    col_venc = cabecalho.index("vencimento") + 1
+    col_origem = cabecalho.index("origem_vencimento") + 1 if "origem_vencimento" in cabecalho else None
+    updates = []
     for idx in df[df["id"].astype(str) == str(pid)].index.tolist():
-        ws.update_cell(idx + 2, col_venc, nova_data.strftime("%Y-%m-%d"))
+        updates.append({"range": gspread.utils.rowcol_to_a1(idx + 2, col_venc),
+                        "values": [[nova_data.strftime("%Y-%m-%d")]]})
         if col_origem:
-            ws.update_cell(idx + 2, col_origem, "manual")
+            updates.append({"range": gspread.utils.rowcol_to_a1(idx + 2, col_origem),
+                            "values": [["manual"]]})
+    if updates:
+        ws.batch_update(updates, value_input_option="RAW")
     carregar_parcelas.clear()
 
 
@@ -368,7 +401,7 @@ def baixar_fatura_mes(mes: str, cartao_filtro: str = None):
             lambda r: r["cartao_dep"] if pd.notna(r.get("cartao_dep")) and r["cartao_dep"] != "" else r.get("cartao", ""),
             axis=1
         )
-    mask = (df_p_full["vencimento"].astype(str).str.startswith(mes)) & \
+    mask = (df_p_full["vencimento"].apply(_data_iso).str.startswith(mes)) & \
            (df_p_full["status"] == "pendente")
     if cartao_filtro and cartao_filtro != "Todos":
         mask = mask & (df_p_full["cartao"] == cartao_filtro)

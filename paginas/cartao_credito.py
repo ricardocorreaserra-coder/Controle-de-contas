@@ -2,7 +2,7 @@
 
 import calendar
 import re
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -23,12 +23,41 @@ from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_p
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
+def _data_para_iso(v) -> str:
+    """
+    Normaliza uma data vinda da planilha para 'YYYY-MM-DD'.
+    Aceita texto ISO, 'DD/MM/YYYY' e o número serial do Google Sheets
+    (ex.: 25569 = 01/01/1970). Se não reconhecer, devolve o texto original;
+    se estiver vazio, devolve ''.
+    """
+    if v is None:
+        return ""
+    t = str(v).strip()
+    if not t or t.lower() in ("nan", "none", "nat"):
+        return ""
+    try:
+        n = float(t.replace(",", "."))
+        if 20000 < n < 80000:  # número serial de data do Sheets
+            return (date(1899, 12, 30) + timedelta(days=int(n))).isoformat()
+    except ValueError:
+        pass
+    if len(t) >= 10 and t[4] == "-" and t[7] == "-":
+        return t[:10]
+    if "/" in t:
+        dt = pd.to_datetime(t, dayfirst=True, errors="coerce")
+        if not pd.isna(dt):
+            return dt.date().isoformat()
+    return t
+
+
 def _preparar_df_parcelas(df_p: pd.DataFrame, df_d: pd.DataFrame) -> pd.DataFrame:
     """Faz o merge de parcelas com despesas para preencher descrição/cartão quando vazios."""
     if df_p.empty:
         return pd.DataFrame()
     df_p_converted = df_p.copy()
     df_p_converted["valor"] = pd.to_numeric(df_p_converted["valor"], errors='coerce').fillna(0.0)
+    if "vencimento" in df_p_converted.columns:
+        df_p_converted["vencimento"] = df_p_converted["vencimento"].apply(_data_para_iso)
     if not df_d.empty:
         df_d_sub = df_d[["id", "descricao", "cartao"]].rename(
             columns={"id": "despesa_id", "descricao": "desc_dep", "cartao": "cartao_dep"})
@@ -104,7 +133,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
     if "data_compra" in df_show.columns:
         # Parcelas sem data da compra (lançamentos antigos) ficam em branco
         df_show["data_compra"] = df_show["data_compra"].apply(
-            lambda v: converter_data_para_exibicao(v) if str(v).strip() not in ("", "nan", "None") else "")
+            lambda v: converter_data_para_exibicao(_data_para_iso(v)) if _data_para_iso(v) else "")
     df_show.rename(columns={"id": "ID", "descricao": "Despesa/Item", "cartao": "Cartão",
                             "numero": "Parc.", "total": "Total", "valor": "Valor",
                             "data_compra": "Data da Compra",
@@ -148,10 +177,18 @@ def _sub_parcelas(df_p, df_p2, hoje):
             "automática (ex.: o fechamento daquele mês ainda não estava registrado "
             "na aba 🗓️ Fechamentos quando esta compra foi lançada)."
         )
-        venc_atual = pd.to_datetime(df_filtrado.iloc[idx_sel]["vencimento"]).date()
+        venc_dt = pd.to_datetime(_data_para_iso(df_filtrado.iloc[idx_sel]["vencimento"]), errors="coerce")
+        venc_atual = date.today() if pd.isna(venc_dt) else venc_dt.date()
+        if not (2000 <= venc_atual.year <= 2100):
+            st.warning(
+                "O vencimento desta parcela está inválido na planilha. "
+                "Informe a data correta abaixo e clique em Corrigir."
+            )
+            venc_atual = date.today()
         cc_v1, cc_v2 = st.columns([2, 1])
         novo_venc = cc_v1.date_input("Novo vencimento", value=venc_atual,
-                                     format="DD/MM/YYYY", key="corrigir_venc_data")
+                                     min_value=date(2000, 1, 1), max_value=date(2100, 12, 31),
+                                     format="DD/MM/YYYY", key=f"corrigir_venc_data_{pid_acao}")
         cc_v2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
         if cc_v2.button("Corrigir", use_container_width=True, key="btn_corrigir_venc"):
             try:
@@ -215,7 +252,7 @@ def _form_alterar_lancamento(row, pid_acao):
         if cartao_atual and cartao_atual not in nomes_cartoes:
             nomes_cartoes = [cartao_atual] + nomes_cartoes
 
-        compra_atual = pd.to_datetime(row.get("data_compra", ""), errors="coerce")
+        compra_atual = pd.to_datetime(_data_para_iso(row.get("data_compra", "")), errors="coerce")
         compra_atual = None if pd.isna(compra_atual) else compra_atual.date()
 
         with st.form(f"form_alterar_parcela_{pid_acao}"):
