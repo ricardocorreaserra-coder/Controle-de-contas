@@ -11,7 +11,7 @@ import gspread
 import pandas as pd
 
 from config import DIA_VENCIMENTO_PADRAO
-from sheets.client import get_sheet, sheet_to_df, append_linhas_por_nome_ids_unicos
+from sheets.client import get_sheet, sheet_to_df, append_linhas_por_nome_ids_unicos, delete_rows_batch
 from sheets.loaders import carregar_cartoes, carregar_parcelas
 from utils.datas import add_months
 
@@ -78,6 +78,170 @@ def salvar_parcela_manual(cartao, desc, valor_parcela, num_inicial, num_total, v
     carregar_parcelas.clear()
 
 
+def _indices_da_compra(df, idx_ref):
+    """
+    Devolve os índices (do DataFrame) de todas as parcelas que formam a MESMA
+    compra da parcela `idx_ref`.
+
+    - Parcela gerada por despesa: todas com o mesmo despesa_id.
+    - Lançamento histórico (despesa_id == -1): parcelas com mesma descrição,
+      cartão e total. Se houver números de parcela repetidos nesse conjunto
+      (duas compras diferentes com a mesma descrição, p.ex. duas "Netflix"),
+      separa pela sequência: as parcelas de uma compra são gravadas juntas,
+      com ids consecutivos e números 1, 2, 3...
+    """
+    ref = df.loc[idx_ref]
+    if str(ref["despesa_id"]).strip() != "-1":
+        return list(df[df["despesa_id"].astype(str) == str(ref["despesa_id"])].index)
+
+    mesma = df[
+        (df["despesa_id"].astype(str).str.strip() == "-1")
+        & (df["descricao"].astype(str) == str(ref["descricao"]))
+        & (df["cartao"].astype(str) == str(ref["cartao"]))
+        & (df["total"].astype(str) == str(ref["total"]))
+    ]
+    numeros = pd.to_numeric(mesma["numero"], errors="coerce")
+    if not numeros.duplicated().any():
+        return sorted(mesma.index)
+
+    por_id = {}
+    for i, r in mesma.iterrows():
+        try:
+            por_id[int(r["id"])] = (i, int(r["numero"]))
+        except (ValueError, TypeError):
+            continue
+    id_ref, num_ref = int(ref["id"]), int(ref["numero"])
+    escolhidos = [idx_ref]
+    for passo in (1, -1):
+        cur_id, cur_n = id_ref, num_ref
+        while (cur_id + passo) in por_id and por_id[cur_id + passo][1] == cur_n + passo:
+            cur_id += passo
+            cur_n += passo
+            escolhidos.append(por_id[cur_id][0])
+    return sorted(escolhidos)
+
+
+def resumo_compra_parcelas(df, pid):
+    """Resumo da compra a que a parcela `pid` pertence (para exibir na tela).
+    Devolve None se a parcela não existir em `df`."""
+    alvo = df[df["id"].astype(str) == str(pid)]
+    if alvo.empty:
+        return None
+    idx_ref = alvo.index[0]
+    ref = df.loc[idx_ref]
+    g = df.loc[_indices_da_compra(df, idx_ref)]
+    nums = pd.to_numeric(g["numero"], errors="coerce")
+    return {
+        "manual": str(ref["despesa_id"]).strip() == "-1",
+        "descricao": str(ref["descricao"]),
+        "cartao": str(ref["cartao"]),
+        "total": int(pd.to_numeric(ref["total"], errors="coerce")),
+        "n": len(g),
+        "pagas": int((g["status"] == "pago").sum()),
+        "pendentes": int((g["status"] == "pendente").sum()),
+        "num_min": int(nums.min()),
+        "num_max": int(nums.max()),
+    }
+
+
+def _localizar_compra_manual(ws, pid):
+    """Lê a planilha e devolve (df, idx_ref, índices_da_compra) de um lançamento
+    histórico. Levanta ValueError se a parcela não existir ou não for histórica."""
+    df = sheet_to_df(ws)
+    alvo = df[df["id"].astype(str) == str(pid)] if not df.empty else df
+    if alvo.empty:
+        raise ValueError("Parcela não encontrada (ela pode ter sido excluída).")
+    idx_ref = alvo.index[0]
+    if str(df.loc[idx_ref, "despesa_id"]).strip() != "-1":
+        raise ValueError(
+            "Esta parcela veio de uma despesa. Altere ou exclua a despesa na aba Despesas."
+        )
+    return df, idx_ref, _indices_da_compra(df, idx_ref)
+
+
+def excluir_compra_parcelas(pid):
+    """Exclui TODAS as parcelas (pagas e pendentes) de um lançamento histórico.
+    Devolve o nº de parcelas excluídas."""
+    ws = get_sheet("parcelas")
+    df, idx_ref, idxs = _localizar_compra_manual(ws, pid)
+    delete_rows_batch(ws, idxs)
+    carregar_parcelas.clear()
+    return len(idxs)
+
+
+def corrigir_total_parcelas(pid, novo_total):
+    """
+    Corrige a quantidade total de parcelas de um lançamento histórico.
+
+    - Reduzir: remove as parcelas de número maior que o novo total (se alguma
+      delas estiver paga, recusa — estorne antes).
+    - Aumentar: cria as parcelas que faltam, mês a mês depois da última, com o
+      mesmo valor, dia de vencimento, descrição, cartão e data da compra.
+    Em ambos os casos o campo 'total' de todas as parcelas da compra é atualizado.
+    Devolve (removidas, criadas).
+    """
+    novo_total = int(novo_total)
+    if not (1 <= novo_total <= 48):
+        raise ValueError("O total de parcelas deve estar entre 1 e 48.")
+
+    ws = get_sheet("parcelas")
+    df, idx_ref, idxs = _localizar_compra_manual(ws, pid)
+    g = df.loc[idxs].copy()
+    g["_n"] = pd.to_numeric(g["numero"], errors="coerce")
+    num_min, num_max = int(g["_n"].min()), int(g["_n"].max())
+
+    if novo_total < num_min:
+        raise ValueError(
+            f"O total não pode ser menor que a primeira parcela lançada (nº {num_min}). "
+            "Para remover a compra toda, use a exclusão."
+        )
+    remover = g[g["_n"] > novo_total]
+    if (remover["status"] == "pago").any():
+        raise ValueError(
+            "Há parcela(s) paga(s) entre as que seriam removidas. Estorne-as para pendente antes de reduzir o total."
+        )
+    manter = g[g["_n"] <= novo_total]
+
+    # 1) atualiza o campo 'total' das parcelas que ficam
+    cabecalho = ws.row_values(1)
+    col_total = cabecalho.index("total") + 1
+    updates = [
+        {"range": gspread.utils.rowcol_to_a1(i + 2, col_total), "values": [[novo_total]]}
+        for i in manter.index
+    ]
+    if updates:
+        ws.batch_update(updates)
+
+    removidas = criadas = 0
+    if len(remover):
+        # 2a) reduzir: apaga as parcelas excedentes
+        delete_rows_batch(ws, list(remover.index))
+        removidas = len(remover)
+    elif novo_total > num_max:
+        # 2b) aumentar: cria as parcelas que faltam
+        ultima = g.loc[g["_n"].idxmax()]
+        base = datetime.strptime(str(ultima["vencimento"])[:10], "%Y-%m-%d").date()
+        data_compra = str(ultima.get("data_compra", "")).strip()
+        novas = []
+        for k in range(1, novo_total - num_max + 1):
+            venc = add_months(base, k)
+            venc = venc.replace(day=min(base.day, calendar.monthrange(venc.year, venc.month)[1]))
+            linha = {
+                "despesa_id": -1, "numero": num_max + k, "total": novo_total,
+                "valor": float(ultima["valor"]), "vencimento": venc.strftime("%Y-%m-%d"),
+                "status": "pendente", "descricao": str(ultima["descricao"]),
+                "cartao": str(ultima["cartao"]), "origem_vencimento": "manual",
+            }
+            if data_compra and data_compra.lower() != "nan":
+                linha["data_compra"] = data_compra
+            novas.append(linha)
+        append_linhas_por_nome_ids_unicos(ws, novas)
+        criadas = len(novas)
+
+    carregar_parcelas.clear()
+    return removidas, criadas
+
+
 def alterar_lancamento_parcela(pid, valor=None, descricao=None, cartao=None,
                                data_compra=None, escopo="parcela"):
     """
@@ -111,15 +275,7 @@ def alterar_lancamento_parcela(pid, valor=None, descricao=None, cartao=None,
     manual = str(ref["despesa_id"]).strip() == "-1"
 
     # Parcelas que formam a mesma compra
-    if manual:
-        grupo = df[
-            (df["despesa_id"].astype(str).str.strip() == "-1")
-            & (df["descricao"].astype(str) == str(ref["descricao"]))
-            & (df["cartao"].astype(str) == str(ref["cartao"]))
-            & (df["total"].astype(str) == str(ref["total"]))
-        ]
-    else:
-        grupo = df[df["despesa_id"].astype(str) == str(ref["despesa_id"])]
+    grupo = df.loc[_indices_da_compra(df, idx_ref)]
 
     # ── Validações ──
     if valor is not None and not (0 < float(valor) <= 1_000_000):

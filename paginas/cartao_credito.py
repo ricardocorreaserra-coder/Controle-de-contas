@@ -12,7 +12,7 @@ from sheets.loaders import carregar_parcelas, carregar_despesas, carregar_cartoe
 from logica.cartoes import salvar_cartao, excluir_cartao, cartao_tem_vinculos, estimar_vencimento_parcela
 from logica.parcelas import (
     salvar_parcela_manual, atualizar_parcela, baixar_fatura_mes, atualizar_vencimento_parcela,
-    alterar_lancamento_parcela,
+    alterar_lancamento_parcela, resumo_compra_parcelas, excluir_compra_parcelas, corrigir_total_parcelas,
 )
 from logica.fechamentos import (
     fechamentos_ordenados_por_cartao, salvar_fechamento, excluir_fechamento,
@@ -111,7 +111,8 @@ def _sub_parcelas(df_p, df_p2, hoje):
                             "vencimento": "Vencimento"}, inplace=True)
 
     event_p = st.dataframe(df_show, use_container_width=True, hide_index=True,
-                           on_select="rerun", selection_mode="single-row", key="df_parcelas_list")
+                           on_select="rerun", selection_mode="single-row",
+                           key=f"df_parcelas_list_{st.session_state.get('_ver_df_parcelas', 0)}")
 
     st.markdown("#### Ações da Parcela")
     # Ignora seleção "velha" (posição fora do intervalo após filtro/baixa/exclusão)
@@ -161,6 +162,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
                 st.error(f"Erro ao corrigir vencimento: {e}")
 
         _form_alterar_lancamento(df_filtrado.iloc[idx_sel], pid_acao)
+        _form_gerenciar_compra(df_p, pid_acao)
     else:
         st.info("💡 Clique em uma parcela na tabela acima para liberar as ações de pagamento/estorno.")
 
@@ -259,6 +261,73 @@ def _form_alterar_lancamento(row, pid_acao):
                 st.error(str(e))
             except Exception as e:
                 st.error(f"Erro ao alterar lançamento: {e}")
+
+
+def _form_gerenciar_compra(df_p, pid_acao):
+    """Corrigir a quantidade de parcelas ou excluir a compra inteira (lançamentos históricos)."""
+    resumo = resumo_compra_parcelas(df_p, pid_acao)
+
+    with st.expander("🗂️ Corrigir quantidade de parcelas / Excluir compra", expanded=False):
+        if resumo is None:
+            st.caption("Parcela não encontrada. Recarregue a página.")
+            return
+        if not resumo["manual"]:
+            st.caption(
+                "Esta parcela veio de uma despesa lançada na aba Despesas. "
+                "Para corrigir o parcelamento ou excluir, altere a despesa lá."
+            )
+            return
+
+        st.markdown(
+            f"**{resumo['descricao']}** — {resumo['cartao']} · {resumo['n']} parcela(s) lançada(s) "
+            f"(nº {resumo['num_min']} a {resumo['num_max']}) · "
+            f"{resumo['pagas']} paga(s), {resumo['pendentes']} pendente(s)"
+        )
+
+        # ── Corrigir quantidade de parcelas ──
+        st.markdown("###### Corrigir quantidade de parcelas")
+        novo_total = st.number_input("Total de parcelas da compra", min_value=1, max_value=48,
+                                     value=int(resumo["total"]), step=1, key=f"gc_total_{pid_acao}")
+        if novo_total < resumo["num_max"]:
+            st.warning(f"Serão **removidas** as parcelas {novo_total + 1} a {resumo['num_max']}.")
+        elif novo_total > resumo["num_max"]:
+            st.info(
+                f"Serão **criadas** as parcelas {resumo['num_max'] + 1} a {novo_total}, mês a mês depois da última, "
+                "com o mesmo valor e o mesmo dia de vencimento."
+            )
+        if st.button("Aplicar novo total", use_container_width=True, key=f"gc_btn_total_{pid_acao}",
+                     disabled=(novo_total == resumo["total"] and novo_total == resumo["num_max"])):
+            try:
+                removidas, criadas = corrigir_total_parcelas(pid_acao, novo_total)
+                st.session_state["_ver_df_parcelas"] = st.session_state.get("_ver_df_parcelas", 0) + 1
+                st.session_state["_msg_alt_parcela"] = (
+                    f"Total corrigido para {novo_total} parcela(s): {removidas} removida(s), {criadas} criada(s)."
+                )
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+            except Exception as e:
+                st.error(f"Erro ao corrigir o total de parcelas: {e}")
+
+        # ── Excluir compra ──
+        st.markdown("---")
+        st.markdown("###### Excluir compra")
+        aviso_pagas = f" (inclui {resumo['pagas']} já paga(s))" if resumo["pagas"] else ""
+        confirmar = st.checkbox(
+            f"Confirmo a exclusão de **{resumo['descricao']}** e de suas {resumo['n']} parcela(s){aviso_pagas}",
+            key=f"gc_confirma_{pid_acao}",
+        )
+        if st.button("🗑 Excluir compra", type="primary", use_container_width=True,
+                     key=f"gc_btn_excluir_{pid_acao}", disabled=not confirmar):
+            try:
+                n = excluir_compra_parcelas(pid_acao)
+                st.session_state["_ver_df_parcelas"] = st.session_state.get("_ver_df_parcelas", 0) + 1
+                st.session_state["_msg_alt_parcela"] = f"Compra '{resumo['descricao']}' excluída ({n} parcela(s))."
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+            except Exception as e:
+                st.error(f"Erro ao excluir a compra: {e}")
 
 
 def _sub_faturas_futuras(df_p, df_p2):
