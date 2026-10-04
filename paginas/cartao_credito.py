@@ -439,7 +439,7 @@ def _sub_lancar_historico():
 
         col_m4, col_m5 = st.columns(2)
         parc_init_m  = col_m4.selectbox("Próxima Parcela a vencer *", list(range(1, 49)), index=0, key="m_init")
-        parc_total_m = col_m5.selectbox("Total de Parcelas da Compra *", list(range(1, 49)), index=11, key="m_total")
+        parc_total_m = col_m5.selectbox("Total de Parcelas da Compra *", list(range(1, 49)), index=0, key="m_total")
 
         col_m6, col_m7 = st.columns(2)
         data_compra_m = col_m6.date_input("Data da compra (opcional)", value=None,
