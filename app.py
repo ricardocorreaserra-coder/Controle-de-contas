@@ -55,8 +55,8 @@ if _usuario != USUARIO_PADRAO:
     col_user, col_sair = st.columns([5, 1])
     col_user.caption(f"👤 Conectado como **{_usuario}**")
     if col_sair.button("Sair", use_container_width=True, key="btn_sair"):
-        st.session_state["autenticado"] = False
-        st.session_state.pop("usuario", None)
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════

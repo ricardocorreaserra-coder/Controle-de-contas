@@ -61,8 +61,8 @@ def render():
                 try:
                     salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip(),
                                    recorrente=rrecorrente, recorrencia_fim=rrec_fim)
-                    st.session_state["salvando_receita"] = False
                     concluir_com_sucesso("✅ Receita lançada com sucesso!", campo_valor_base_key="rec_valor")
                 except Exception as e:
-                    st.session_state["salvando_receita"] = False
                     st.error(f"Erro ao salvar receita: {e}")
+                finally:
+                    st.session_state["salvando_receita"] = False

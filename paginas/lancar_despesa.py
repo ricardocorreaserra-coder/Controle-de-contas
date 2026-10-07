@@ -80,8 +80,8 @@ def render():
                     salvar_despesa(desc.strip(), v, data_d.strftime("%Y-%m-%d"),
                                    local.strip(), pag, cat, cartao, n_parc, obs.strip(),
                                    recorrente=recorrente, recorrencia_fim=rec_fim)
-                    st.session_state["salvando_despesa"] = False
                     concluir_com_sucesso("✅ Despesa lançada com sucesso!", campo_valor_base_key="desp_valor")
                 except Exception as e:
-                    st.session_state["salvando_despesa"] = False
                     st.error(f"Erro ao salvar despesa: {e}")
+                finally:
+                    st.session_state["salvando_despesa"] = False

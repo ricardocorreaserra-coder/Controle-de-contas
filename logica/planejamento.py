@@ -35,7 +35,7 @@ def _projetar_parcelas_cartao(df_p: pd.DataFrame, meses: list) -> list:
         return linhas
     meses_set = set(meses)
     df_pend = df_p[df_p["status"] == "pendente"].copy()
-    df_pend["valor"] = pd.to_numeric(df_pend["valor"], errors="coerce").fillna(0.0)
+    df_pend["valor"] = pd.to_numeric(df_pend["valor"], errors="coerce").fillna(0.0).abs()
     for _, row in df_pend.iterrows():
         mes = data_iso(row["vencimento"])[:7]
         if mes in meses_set:
@@ -58,7 +58,7 @@ def _projetar_despesas(df_d: pd.DataFrame, meses: list) -> list:
         return linhas
     meses_set = set(meses)
     df_d2 = df_d.copy()
-    df_d2["valor"] = pd.to_numeric(df_d2["valor"], errors="coerce").fillna(0.0)
+    df_d2["valor"] = pd.to_numeric(df_d2["valor"], errors="coerce").fillna(0.0).abs()
     df_d2["data"]  = df_d2["data"].apply(data_iso)
     is_recorrente = df_d2.get("recorrente", "").astype(str).str.lower() == "sim"
     nao_cartao    = df_d2["pagamento"] != "Cartão de crédito"
@@ -94,7 +94,7 @@ def _projetar_receitas(df_r: pd.DataFrame, meses: list) -> list:
         return linhas
     meses_set = set(meses)
     df_r2 = df_r.copy()
-    df_r2["valor"] = pd.to_numeric(df_r2["valor"], errors="coerce").fillna(0.0)
+    df_r2["valor"] = pd.to_numeric(df_r2["valor"], errors="coerce").fillna(0.0).abs()
     df_r2["data"]  = df_r2["data"].apply(data_iso)
     is_recorrente_r = df_r2.get("recorrente", "").astype(str).str.lower() == "sim"
 
@@ -129,7 +129,7 @@ def _projetar_planejamento(df_pl: pd.DataFrame, meses: list) -> list:
         return linhas
     meses_set = set(meses)
     df_pl2 = df_pl.copy()
-    df_pl2["valor"] = pd.to_numeric(df_pl2["valor"], errors="coerce").fillna(0.0)
+    df_pl2["valor"] = pd.to_numeric(df_pl2["valor"], errors="coerce").fillna(0.0).abs()
     for _, row in df_pl2[df_pl2["mes"].astype(str).isin(meses_set)].iterrows():
         linhas.append({
             "mes": str(row["mes"]), "tipo": str(row["tipo"]),
