@@ -17,6 +17,8 @@ A lógica de conferência das credenciais fica em utils/sessao.py
 (`autenticar_credenciais`), que é pura e testável isoladamente.
 """
 
+import time
+
 import streamlit as st
 
 from utils.sessao import autenticar_credenciais, _ler_usuarios_dos_secrets
@@ -77,6 +79,12 @@ def verificar_autenticacao():
                 st.session_state["tentativas_login"] = 0
                 st.rerun()
             else:
+                # B-01 · Atraso proposital a cada tentativa falha. Isso não
+                # depende do contador em session_state (que um F5 zera) —
+                # desacelera qualquer tentativa automatizada de força bruta
+                # mesmo que a pessoa recarregue a página entre uma tentativa
+                # e outra.
+                time.sleep(2)
                 st.session_state["tentativas_login"] += 1
                 restantes = 5 - st.session_state["tentativas_login"]
                 erro = ("Usuário ou senha incorretos." if modo_multiusuario
