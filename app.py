@@ -3,9 +3,9 @@ Controle de Contas - Versão Web (Streamlit + Google Sheets)
 Uso: streamlit run app.py
 
 Este arquivo é apenas o ponto de entrada: configura a página, aplica o CSS,
-verifica autenticação e monta as abas. Toda a lógica de negócio e acesso a
-dados vive em `logica/`, `sheets/` e `utils/`; o conteúdo de cada aba vive
-em `paginas/`.
+verifica autenticação e monta o menu lateral de navegação. Toda a lógica
+de negócio e acesso a dados vive em `logica/`, `sheets/` e `utils/`; o
+conteúdo de cada página vive em `paginas/`.
 """
 
 import streamlit as st
@@ -60,34 +60,24 @@ if _usuario != USUARIO_PADRAO:
         st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ABAS
+# NAVEGAÇÃO (menu lateral)
 # ══════════════════════════════════════════════════════════════════════════════
-tab_dash, tab_lanc, tab_rec, tab_lista, tab_cc, tab_cc_rec, tab_plan, tab_emp = st.tabs([
-    "📊 Dashboard", "➖ Lançar Despesa", "➕ Lançar Receita",
-    "☰ Despesas", "💳 Cartão de Crédito", "🏦 Conta Corrente",
-    "🔮 Planejamento 12 Meses", "🏛️ Empréstimos",
-])
+# Antes disso o app usava st.tabs, que renderiza as 8 páginas a cada
+# interação (digitar em um campo já reprocessa Dashboard, Planejamento
+# etc. por baixo, mesmo invisíveis). Com st.sidebar.radio + chamada
+# condicional, só a página selecionada roda — as outras 7 ficam paradas
+# até o usuário clicar nelas.
+PAGINAS = {
+    "📊 Dashboard": dashboard,
+    "➖ Lançar Despesa": lancar_despesa,
+    "➕ Lançar Receita": lancar_receita,
+    "☰ Despesas": lista_despesas,
+    "💳 Cartão de Crédito": cartao_credito,
+    "🏦 Conta Corrente": conta_corrente,
+    "🔮 Planejamento 12 Meses": planejamento_12_meses,
+    "🏛️ Empréstimos": emprestimos,
+}
 
-with tab_dash:
-    dashboard.render()
-
-with tab_lanc:
-    lancar_despesa.render()
-
-with tab_rec:
-    lancar_receita.render()
-
-with tab_lista:
-    lista_despesas.render()
-
-with tab_cc:
-    cartao_credito.render()
-
-with tab_cc_rec:
-    conta_corrente.render()
-
-with tab_plan:
-    planejamento_12_meses.render()
-
-with tab_emp:
-    emprestimos.render()
+st.sidebar.markdown("### 💰 Controle de Contas")
+pagina_escolhida = st.sidebar.radio("Navegação", list(PAGINAS.keys()), label_visibility="collapsed")
+PAGINAS[pagina_escolhida].render()
