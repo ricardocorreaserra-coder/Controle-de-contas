@@ -6,6 +6,7 @@ de recorrência.
 
 from datetime import datetime
 
+import gspread
 import pandas as pd
 
 from config import DIA_VENCIMENTO_PADRAO
@@ -97,14 +98,17 @@ def atualizar_despesa(did: int, desc: str, valor: float, data: str, local: str, 
     """
     ws = get_sheet("despesas")
     df = sheet_to_df(ws)
+    cabecalho = ws.row_values(1)
+    campos = {"descricao": desc, "valor": valor, "data": data,
+              "local": local, "categoria": cat, "observacao": obs}
+    updates = []
     for idx in df[df["id"].astype(str) == str(did)].index.tolist():
         row_num = idx + 2
-        ws.update_cell(row_num, df.columns.get_loc("descricao") + 1, desc)
-        ws.update_cell(row_num, df.columns.get_loc("valor") + 1, valor)
-        ws.update_cell(row_num, df.columns.get_loc("data") + 1, data)
-        ws.update_cell(row_num, df.columns.get_loc("local") + 1, local)
-        ws.update_cell(row_num, df.columns.get_loc("categoria") + 1, cat)
-        ws.update_cell(row_num, df.columns.get_loc("observacao") + 1, obs)
+        for campo, v in campos.items():
+            col = cabecalho.index(campo) + 1
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_num, col), "values": [[v]]})
+    if updates:
+        ws.batch_update(updates, value_input_option="RAW")
     carregar_despesas.clear()
 
 

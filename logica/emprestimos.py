@@ -19,6 +19,8 @@ REGRAS DE NEGÓCIO (adaptadas a pedido do usuário):
 
 from datetime import date, datetime
 
+import gspread
+
 from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_linha_por_nome_id_unico
 from sheets.loaders import carregar_emprestimos
 from utils.datas import add_months
@@ -106,18 +108,23 @@ def atualizar_emprestimo(eid: int, descricao: str, banco: str, valor_parcela: fl
     botão de 'registrar pagamento' para compensar erros de digitação."""
     ws = get_sheet("emprestimos")
     df = sheet_to_df(ws)
+    cabecalho = ws.row_values(1)
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     valor_total = calcular_valor_total_devido(valor_parcela, parcelas_restantes)
+    campos = {
+        "descricao": descricao, "banco": banco, "valor_parcela": valor_parcela,
+        "parcelas_restantes": parcelas_restantes,
+        "proxima_data_vencimento": proxima_data_vencimento.strftime("%Y-%m-%d"),
+        "valor_total_devido": valor_total, "atualizado_em": agora,
+    }
+    updates = []
     for idx in df[df["id"].astype(str) == str(eid)].index.tolist():
         row_num = idx + 2
-        ws.update_cell(row_num, df.columns.get_loc("descricao") + 1, descricao)
-        ws.update_cell(row_num, df.columns.get_loc("banco") + 1, banco)
-        ws.update_cell(row_num, df.columns.get_loc("valor_parcela") + 1, valor_parcela)
-        ws.update_cell(row_num, df.columns.get_loc("parcelas_restantes") + 1, parcelas_restantes)
-        ws.update_cell(row_num, df.columns.get_loc("proxima_data_vencimento") + 1,
-                       proxima_data_vencimento.strftime("%Y-%m-%d"))
-        ws.update_cell(row_num, df.columns.get_loc("valor_total_devido") + 1, valor_total)
-        ws.update_cell(row_num, df.columns.get_loc("atualizado_em") + 1, agora)
+        for campo, v in campos.items():
+            col = cabecalho.index(campo) + 1
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_num, col), "values": [[v]]})
+    if updates:
+        ws.batch_update(updates, value_input_option="RAW")
     carregar_emprestimos.clear()
 
 
@@ -151,6 +158,12 @@ def sincronizar_baixas_automaticas() -> list:
 
     hoje = date.today()
     atualizados = []
+    updates = []
+    cabecalho = ws.row_values(1)
+    col_parcelas = cabecalho.index("parcelas_restantes") + 1
+    col_total    = cabecalho.index("valor_total_devido") + 1
+    col_venc     = cabecalho.index("proxima_data_vencimento") + 1
+    col_atual    = cabecalho.index("atualizado_em") + 1
 
     for idx, row in df.iterrows():
         parcelas_atuais = int(float(row["parcelas_restantes"])) if str(row["parcelas_restantes"]).strip() else 0
@@ -166,11 +179,14 @@ def sincronizar_baixas_automaticas() -> list:
         if resultado["parcelas_baixadas"] > 0:
             row_num = idx + 2
             agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ws.update_cell(row_num, df.columns.get_loc("parcelas_restantes") + 1, resultado["parcelas_restantes"])
-            ws.update_cell(row_num, df.columns.get_loc("valor_total_devido") + 1, resultado["valor_total_devido"])
-            ws.update_cell(row_num, df.columns.get_loc("proxima_data_vencimento") + 1,
-                           resultado["proxima_data_vencimento"].strftime("%Y-%m-%d"))
-            ws.update_cell(row_num, df.columns.get_loc("atualizado_em") + 1, agora)
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_num, col_parcelas),
+                             "values": [[resultado["parcelas_restantes"]]]})
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_num, col_total),
+                             "values": [[resultado["valor_total_devido"]]]})
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_num, col_venc),
+                             "values": [[resultado["proxima_data_vencimento"].strftime("%Y-%m-%d")]]})
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_num, col_atual),
+                             "values": [[agora]]})
             atualizados.append({
                 "descricao": row["descricao"],
                 "banco": row["banco"],
@@ -178,6 +194,7 @@ def sincronizar_baixas_automaticas() -> list:
                 "parcelas_restantes": resultado["parcelas_restantes"],
             })
 
-    if atualizados:
+    if updates:
+        ws.batch_update(updates, value_input_option="RAW")
         carregar_emprestimos.clear()
     return atualizados
