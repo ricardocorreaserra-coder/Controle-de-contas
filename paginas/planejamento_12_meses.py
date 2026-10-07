@@ -177,8 +177,9 @@ def _sub_lancamentos_futuros(meses_futuros):
 
     event_pl = st.dataframe(df_pl_show, use_container_width=True, hide_index=True,
                             on_select="rerun", selection_mode="single-row", key="df_planejamento_list")
-    if event_pl.selection.rows:
-        idx_sel = event_pl.selection.rows[0]
+    rows_pl = [i for i in event_pl.selection.rows if 0 <= i < len(df_pl_list)]
+    if rows_pl:
+        idx_sel = rows_pl[0]
         id_pl   = int(df_pl_list.iloc[idx_sel]["id"])
         desc_pl_sel = df_pl_list.iloc[idx_sel]["descricao"]
         confirmar_pl = st.checkbox(f"Confirmo a exclusão do item de planejamento #{id_pl} — {desc_pl_sel}",
@@ -225,8 +226,9 @@ def _sub_recorrentes():
 
             event_dr = st.dataframe(df_d_rec_show, use_container_width=True, hide_index=True,
                                     on_select="rerun", selection_mode="single-row", key="df_desp_recorrentes")
-            if event_dr.selection.rows:
-                idx_sel = event_dr.selection.rows[0]
+            rows_dr = [i for i in event_dr.selection.rows if 0 <= i < len(df_d_rec_f)]
+            if rows_dr:
+                idx_sel = rows_dr[0]
                 id_dr   = int(df_d_rec_f.iloc[idx_sel]["id"])
                 desc_dr = df_d_rec_f.iloc[idx_sel]["descricao"]
                 if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_dr", use_container_width=True):
@@ -257,8 +259,9 @@ def _sub_recorrentes():
 
             event_rr = st.dataframe(df_r_rec_show, use_container_width=True, hide_index=True,
                                     on_select="rerun", selection_mode="single-row", key="df_rec_recorrentes")
-            if event_rr.selection.rows:
-                idx_sel = event_rr.selection.rows[0]
+            rows_rr = [i for i in event_rr.selection.rows if 0 <= i < len(df_r_rec_f)]
+            if rows_rr:
+                idx_sel = rows_rr[0]
                 id_rr   = int(df_r_rec_f.iloc[idx_sel]["id"])
                 desc_rr = df_r_rec_f.iloc[idx_sel]["descricao"]
                 if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_rr", use_container_width=True):

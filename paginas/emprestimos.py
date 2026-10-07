@@ -125,11 +125,12 @@ def _sub_lista():
                          on_select="rerun", selection_mode="single-row", key="df_emprestimos_list")
 
     st.markdown("#### Ações")
-    if not event.selection.rows:
+    rows_emp = [i for i in event.selection.rows if 0 <= i < len(df)]
+    if not rows_emp:
         st.info("💡 Clique em um empréstimo na tabela acima para ver detalhes ou excluir.")
         return
 
-    idx_sel  = event.selection.rows[0]
+    idx_sel  = rows_emp[0]
     eid      = int(df.iloc[idx_sel]["id"])
     desc_sel = df.iloc[idx_sel]["descricao"]
     banco_sel = df.iloc[idx_sel]["banco"]

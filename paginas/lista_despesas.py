@@ -63,8 +63,9 @@ def render():
                            on_select="rerun", selection_mode="single-row")
 
     st.markdown("#### Ações")
-    if event_d.selection.rows:
-        idx_sel      = event_d.selection.rows[0]
+    rows_d = [i for i in event_d.selection.rows if 0 <= i < len(df_filtrado)]
+    if rows_d:
+        idx_sel      = rows_d[0]
         id_excluir   = int(df_filtrado.iloc[idx_sel]["id"])
         desc_excluir = df_filtrado.iloc[idx_sel]["descricao"]
         val_excluir  = fmt_moeda(df_filtrado.iloc[idx_sel]["valor"])

@@ -77,8 +77,9 @@ def render():
                             on_select="rerun", selection_mode="single-row")
 
     st.markdown("#### Ações do Lançamento")
-    if event_cc.selection.rows:
-        idx_sel  = event_cc.selection.rows[0]
+    rows_cc = [i for i in event_cc.selection.rows if 0 <= i < len(movs)]
+    if rows_cc:
+        idx_sel  = rows_cc[0]
         mov_sel  = movs[idx_sel]
         id_sel   = int(mov_sel["ID"])
         tipo_sel = mov_sel["_tipo"]
