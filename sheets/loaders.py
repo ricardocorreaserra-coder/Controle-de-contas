@@ -29,7 +29,6 @@ def carregar_cartoes():
             [6, "Outro",     5000, 10, 17, datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
         ]
         ws.append_rows(default_cards)
-        carregar_cartoes.clear()
         df = sheet_to_df(ws)
     return df
 
