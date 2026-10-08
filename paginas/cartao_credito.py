@@ -365,7 +365,7 @@ def _sub_faturas_futuras(df_p, df_p2):
     fig_proj = px.bar(df_fat_group, x="Mês Vencimento", y="valor", color="cartao",
                       labels={"valor": "Total da Fatura (R$)", "Mês Vencimento": "Mês da Fatura", "cartao": "Cartão"},
                       title="Distribuição Mensal das Faturas Futuras",
-                      template="plotly_white", color_discrete_sequence=px.colors.qualitative.Set2)
+                      color_discrete_sequence=px.colors.qualitative.Set2)
     fig_proj.update_layout(barmode="stack", separators=',.')
     st.plotly_chart(fig_proj, use_container_width=True)
 

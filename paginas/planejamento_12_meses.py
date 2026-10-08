@@ -57,7 +57,7 @@ def _sub_panorama(meses_futuros):
     fig_plan.add_bar(x=df_resumo["Mês"], y=df_resumo["Outras desp."], name="Outras despesas", marker_color="#7c3aed")
     fig_plan.add_trace(go.Scatter(x=df_resumo["Mês"], y=df_resumo["Receitas"], name="Receitas",
                                   mode="lines+markers", line=dict(color="#16a34a", width=3)))
-    fig_plan.update_layout(barmode="stack", template="plotly_white", separators=',.',
+    fig_plan.update_layout(barmode="stack", separators=',.',
                            height=350, legend=dict(orientation="h", y=-0.2),
                            margin=dict(t=10, b=10, l=10, r=10))
     st.plotly_chart(fig_plan, use_container_width=True)

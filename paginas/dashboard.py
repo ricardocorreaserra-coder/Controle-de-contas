@@ -60,7 +60,7 @@ def render():
                      hovertemplate='Receita: R$ %{y:,.2f}<extra></extra>')
         fig1.add_bar(x=df_hist["Mês"], y=df_hist["Despesa"], name="Despesa", marker_color="#dc2626",
                      hovertemplate='Despesa: R$ %{y:,.2f}<extra></extra>')
-        fig1.update_layout(barmode="group", height=300, template="plotly_white", separators=',.',
+        fig1.update_layout(barmode="group", height=300, separators=',.',
                            margin=dict(t=10, b=10, l=10, r=10),
                            legend=dict(orientation="h", y=-0.2))
         st.plotly_chart(fig1, use_container_width=True)
@@ -73,7 +73,7 @@ def render():
             fig2 = px.pie(grp, values="Valor", names="Categoria", hole=0.4, height=300,
                           color_discrete_sequence=px.colors.qualitative.Set2)
             fig2.update_traces(textinfo='percent+label', hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>')
-            fig2.update_layout(template="plotly_white", separators=',.', margin=dict(t=10, b=10, l=10, r=10))
+            fig2.update_layout(separators=',.', margin=dict(t=10, b=10, l=10, r=10))
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Sem dados para o período.")
@@ -86,7 +86,7 @@ def render():
             fig3 = px.pie(grp2, values="Valor", names="Pagamento", hole=0.4, height=300,
                           color_discrete_sequence=px.colors.qualitative.Pastel)
             fig3.update_traces(textinfo='percent+label', hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>')
-            fig3.update_layout(template="plotly_white", separators=',.', margin=dict(t=10, b=10, l=10, r=10))
+            fig3.update_layout(separators=',.', margin=dict(t=10, b=10, l=10, r=10))
             st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Sem dados para o período.")

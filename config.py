@@ -55,6 +55,11 @@ EXPECTED_HEADERS = {
 }
 
 # ── CSS da aplicação ─────────────────────────────────────────────────────────────
+# Compatível com tema claro E escuro: NUNCA usar cores de fundo/texto fixas (white,
+# #e2e8f0, #64748b...) nos elementos que ficam sobre o fundo da página. O Streamlit 1.58
+# não expõe variáveis CSS de tema, então usamos fundos translúcidos (rgba) e herdamos a
+# cor do texto. As cores semânticas (.green/.red/.blue/.orange) já têm contraste >= 3:1
+# nos dois temas para texto grande. O .main-header é autocontido (gradiente + texto branco).
 CSS = """
 <style>
     .main-header {
@@ -64,7 +69,7 @@ CSS = """
         display: flex; align-items: center; gap: 0.5rem;
     }
     .card {
-        background: white; border: 1px solid #e2e8f0;
+        background: rgba(128,128,128,0.05); border: 1px solid rgba(128,128,128,0.30);
         border-radius: 12px; padding: 1.25rem 1.5rem;
         text-align: center;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
@@ -74,7 +79,7 @@ CSS = """
         transform: translateY(-2px);
         box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.03);
     }
-    .card-label { font-size: 0.85rem; color: #64748b; margin-bottom: 6px; font-weight: 500; }
+    .card-label { font-size: 0.85rem; opacity: 0.7; margin-bottom: 6px; font-weight: 500; }
     .card-value { font-size: 1.5rem; font-weight: 700; }
     .green  { color: #16a34a; }
     .red    { color: #dc2626; }
@@ -85,12 +90,12 @@ CSS = """
     div[data-testid="stWarning"] { border-radius: 8px; }
     .login-box {
         max-width: 360px; margin: 6rem auto; text-align: center;
-        padding: 2rem; background: white; border-radius: 16px;
-        border: 1px solid #e2e8f0;
+        padding: 2rem; background: rgba(128,128,128,0.05); border-radius: 16px;
+        border: 1px solid rgba(128,128,128,0.30);
         box-shadow: 0 4px 24px rgba(0,0,0,0.07);
     }
     .plan-banner {
-        background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a;
+        background: rgba(37,99,235,0.10); border: 1px solid rgba(37,99,235,0.35); color: inherit;
         padding: 0.75rem 1rem; border-radius: 10px; margin-bottom: 1rem;
         font-size: 0.92rem;
     }

@@ -43,7 +43,7 @@ def verificar_autenticacao():
     <div class="login-box">
         <div style="font-size:2.5rem">💰</div>
         <h2 style="margin:0.5rem 0 0.25rem">Controle de Contas</h2>
-        <p style="color:#64748b;margin-bottom:1.5rem">{instrucao}</p>
+        <p style="opacity:0.7;margin-bottom:1.5rem">{instrucao}</p>
     </div>
     """, unsafe_allow_html=True)
 
