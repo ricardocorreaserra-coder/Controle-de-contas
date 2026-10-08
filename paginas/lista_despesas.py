@@ -7,7 +7,10 @@ import streamlit as st
 
 from config import CAT_DESP, PAGAMENTOS
 from sheets.loaders import carregar_despesas
-from logica.despesas import excluir_despesa, atualizar_despesa
+from logica.despesas import (
+    excluir_despesa, atualizar_despesa, despesa_esta_pendente,
+    sincronizar_baixas_automaticas_despesas, marcar_despesa_paga,
+)
 from utils.datas import seletor_mes_ano
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
@@ -16,6 +19,12 @@ from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensag
 def render():
     st.subheader("Despesas")
     exibir_mensagem_pendente()
+
+    baixadas = sincronizar_baixas_automaticas_despesas()
+    if baixadas:
+        nomes = ", ".join(f"{b['descricao']} ({fmt_moeda(b['valor'])})" for b in baixadas)
+        st.success(f"✅ Baixa automática: {nomes}")
+
     st.markdown("##### Filtros de visualização")
     fmes = seletor_mes_ano("lista")
 
@@ -29,6 +38,23 @@ def render():
         return
 
     df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
+
+    if "status" in df_d.columns:
+        pendentes_mes = df_d[
+            df_d["data"].astype(str).str.startswith(fmes)
+            & df_d["status"].apply(despesa_esta_pendente)
+        ]
+        if not pendentes_mes.empty:
+            st.markdown("##### 📌 Contas a pagar este mês")
+            for _, p in pendentes_mes.sort_values("data").iterrows():
+                pc1, pc2 = st.columns([5, 1])
+                venc_fmt = converter_data_para_exibicao(p["data"])
+                pc1.write(f"**{p['descricao']}** — {fmt_moeda(p['valor'])} — vence {venc_fmt}")
+                if pc2.button("Marcar paga", key=f"pagar_{int(p['id'])}"):
+                    marcar_despesa_paga(int(p["id"]))
+                    st.rerun()
+            st.markdown("<br>", unsafe_allow_html=True)
+
     mask = df_d["data"].astype(str).str.startswith(fmes)
     if fpag != "Todos": mask &= df_d["pagamento"] == fpag
     if fcat != "Todas": mask &= df_d["categoria"] == fcat
@@ -50,13 +76,21 @@ def render():
                "pagamento", "categoria", "n_parcelas", "observacao"]
     if "lancado_por" in df_filtrado.columns:
         colunas.append("lancado_por")
+    if "status" in df_filtrado.columns:
+        colunas.append("status")
     df_show = df_filtrado[colunas].copy()
     df_show["valor"] = df_show["valor"].apply(fmt_moeda)
     df_show["data"]  = df_show["data"].apply(converter_data_para_exibicao)
+    if "status" in df_show.columns:
+        df_show["status"] = df_show["status"].apply(
+            lambda s: "📌 Pendente" if despesa_esta_pendente(s) else "✅ Pago"
+        )
     nomes = ["ID", "Descrição", "Valor", "Data", "Local",
              "Pagamento", "Categoria", "Parcelas", "Obs"]
     if "lancado_por" in df_filtrado.columns:
         nomes.append("Lançado por")
+    if "status" in df_filtrado.columns:
+        nomes.append("Status")
     df_show.columns = nomes
 
     event_d = st.dataframe(df_show, use_container_width=True, hide_index=True,

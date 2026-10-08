@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from sheets.loaders import carregar_despesas, carregar_receitas
+from logica.despesas import despesa_esta_pendente
 from utils.datas import seletor_mes_ano, add_months, fmt_mes_pt
 from utils.formatacao import fmt_moeda, card_html
 
@@ -21,6 +22,10 @@ def render():
 
     if not df_d.empty and "valor" in df_d.columns:
         df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
+    if not df_d.empty and "status" in df_d.columns:
+        # B-04 · despesas pendentes (ex.: conta de luz ainda não debitada)
+        # ficam fora do Dashboard até serem baixadas — ver logica/despesas.py.
+        df_d = df_d[~df_d["status"].apply(despesa_esta_pendente)]
     if not df_r.empty and "valor" in df_r.columns:
         df_r["valor"] = pd.to_numeric(df_r["valor"], errors='coerce').fillna(0.0)
 

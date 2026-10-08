@@ -4,7 +4,7 @@ from datetime import date
 
 import streamlit as st
 
-from config import CAT_DESP, PAGAMENTOS, PARCELAS_OPT
+from config import CAT_DESP, PAGAMENTOS
 from sheets.loaders import obter_nomes_cartoes
 from logica.despesas import salvar_despesa
 from utils.formatacao import parse_valor
@@ -27,7 +27,8 @@ def render():
         desc = st.text_input("Descrição *")
 
         c3, c4 = st.columns(2)
-        data_d = c3.date_input("Data *", value=date.today(), format="DD/MM/YYYY")
+        data_d = c3.date_input("Data *", value=date.today(), format="DD/MM/YYYY",
+                               help="Se marcar como pendente mais abaixo, use aqui a data de vencimento prevista.")
         local  = c4.text_input("Local / Estabelecimento")
 
         c5, c6 = st.columns(2)
@@ -39,7 +40,17 @@ def render():
             st.markdown("##### 💳 Cartão de Crédito")
             cc1, cc2 = st.columns(2)
             cartao = cc1.selectbox("Cartão", obter_nomes_cartoes())
-            n_parc = cc2.selectbox("Parcelas", PARCELAS_OPT)
+            n_parc = cc2.number_input("Parcelas", min_value=1, max_value=60, value=1, step=1)
+
+        pendente = False
+        if pag and pag != "Cartão de crédito":
+            st.markdown("##### 📌 Status")
+            pendente = st.checkbox(
+                "Despesa pendente (ainda não debitou — ex.: conta de luz programada)",
+                key="desp_pendente",
+                help="Fica fora do saldo do Dashboard até a data chegar (baixa automática) "
+                     "ou você marcar como paga manualmente."
+            )
 
         st.markdown("##### 🔁 Recorrência")
         recorrente = st.checkbox("Despesa recorrente (mensal)", key="desp_recorrente")
@@ -79,7 +90,8 @@ def render():
                 try:
                     salvar_despesa(desc.strip(), v, data_d.strftime("%Y-%m-%d"),
                                    local.strip(), pag, cat, cartao, n_parc, obs.strip(),
-                                   recorrente=recorrente, recorrencia_fim=rec_fim)
+                                   recorrente=recorrente, recorrencia_fim=rec_fim,
+                                   pendente=pendente)
                     concluir_com_sucesso("✅ Despesa lançada com sucesso!", campo_valor_base_key="desp_valor")
                 except Exception as e:
                     st.error(f"Erro ao salvar despesa: {e}")

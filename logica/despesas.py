@@ -22,8 +22,20 @@ from utils.datas import hoje_str
 from utils.sessao import usuario_atual
 
 
+def despesa_esta_pendente(status) -> bool:
+    """
+    B-04 · Uma despesa é "pendente" (ainda não debitou — ex.: conta de luz
+    programada) só quando o campo status diz exatamente isso. Qualquer
+    outra coisa — "pago", vazio (despesas lançadas antes deste campo
+    existir), ou lixo — conta como já paga. Nunca inverter essa checagem
+    (ex.: `status != "pago"`), ou despesas antigas sem status viram
+    "pendentes" por engano.
+    """
+    return str(status).strip().lower() == "pendente"
+
+
 def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
-                    recorrente=False, recorrencia_fim=None):
+                    recorrente=False, recorrencia_fim=None, pendente=False):
     ws_d = get_sheet("despesas")
     ws_p = get_sheet("parcelas")
     # append_linha_por_nome_id_unico devolve o id realmente gravado — pode
@@ -39,6 +51,7 @@ def salvar_despesa(desc, valor, data, local, pag, cat, cartao, n_parc, obs,
         "recorrente": "sim" if recorrente else "nao",
         "recorrencia_fim": recorrencia_fim.strftime("%Y-%m-%d") if recorrencia_fim else "",
         "lancado_por": usuario_atual(),
+        "status": "pendente" if pendente else "pago",
     })
     if pag == "Cartão de crédito":
         df_c = carregar_cartoes()
@@ -110,6 +123,54 @@ def atualizar_despesa(did: int, desc: str, valor: float, data: str, local: str, 
     if updates:
         ws.batch_update(updates, value_input_option="RAW")
     carregar_despesas.clear()
+
+
+def sincronizar_baixas_automaticas_despesas() -> list:
+    """
+    Dá baixa (status pendente → pago) em toda despesa cuja data já chegou,
+    comparando com hoje — mesmo padrão de
+    logica/emprestimos.py::sincronizar_baixas_automaticas. Chamada toda vez
+    que a aba ☰ Despesas abre. Todas as atualizações vão num único
+    batch_update, mesmo que várias contas vençam no mesmo dia.
+    """
+    ws = get_sheet("despesas")
+    df = sheet_to_df(ws)
+    if df.empty or "status" not in df.columns:
+        return []
+
+    hoje = hoje_str()
+    cabecalho = ws.row_values(1)
+    col_status = cabecalho.index("status") + 1
+    updates = []
+    baixadas = []
+    for idx, row in df.iterrows():
+        if not despesa_esta_pendente(row["status"]):
+            continue
+        if str(row["data"]) > hoje:
+            continue  # ainda não venceu
+        updates.append({"range": gspread.utils.rowcol_to_a1(idx + 2, col_status), "values": [["pago"]]})
+        baixadas.append({"descricao": row["descricao"], "valor": row["valor"]})
+
+    if updates:
+        ws.batch_update(updates, value_input_option="RAW")
+        carregar_despesas.clear()
+    return baixadas
+
+
+def marcar_despesa_paga(did: int):
+    """Baixa manual e antecipada — para quando o usuário paga antes do
+    vencimento programado."""
+    ws = get_sheet("despesas")
+    df = sheet_to_df(ws)
+    cabecalho = ws.row_values(1)
+    col_status = cabecalho.index("status") + 1
+    updates = [
+        {"range": gspread.utils.rowcol_to_a1(idx + 2, col_status), "values": [["pago"]]}
+        for idx in df[df["id"].astype(str) == str(did)].index.tolist()
+    ]
+    if updates:
+        ws.batch_update(updates, value_input_option="RAW")
+        carregar_despesas.clear()
 
 
 def encerrar_recorrencia_despesa(did: int):
