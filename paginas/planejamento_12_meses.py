@@ -12,7 +12,8 @@ from logica.despesas import encerrar_recorrencia_despesa
 from logica.receitas import salvar_receita, encerrar_recorrencia_receita
 from logica.planejamento import (
     get_panorama, invalidar_cache_panorama, _ts_panorama,
-    salvar_planejamento, salvar_planejamento_replicado, excluir_planejamento,
+    salvar_planejamento, salvar_planejamento_replicado, atualizar_planejamento,
+    excluir_planejamento,
 )
 from logica.exportacao import gerar_excel_panorama, gerar_csv_panorama
 from utils.datas import proximos_12_meses, fmt_mes_str_pt
@@ -108,6 +109,79 @@ def _sub_panorama(meses_futuros):
             st.error(f"Erro ao gerar CSV: {e}")
 
 
+def _bloco_edicao_planejamento(registro, meses_futuros) -> None:
+    """Expander "✏️ Editar item" do item de planejamento selecionado na tabela."""
+    id_pl = int(registro["id"])
+    tipo_db = str(registro["tipo"]).strip().lower()
+    eh_despesa = tipo_db != "receita"
+
+    with st.expander("✏️ Editar item de planejamento", expanded=False):
+        st.caption(
+            f"Tipo: **{'Despesa' if eh_despesa else 'Receita'}** (não pode ser alterado — "
+            "para trocar o tipo, exclua o item e lance de novo)."
+        )
+
+        # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
+        ce1, _ = st.columns([1, 3])
+        with ce1:
+            valor_edit_txt = campo_valor_moeda(
+                "Valor (R$) *", base_key=f"pl_edit_valor_{id_pl}",
+                value=fmt_moeda(registro["valor"]).replace("R$ ", ""),
+            )
+
+        # Mês: a lista de meses futuros começa no mês SEGUINTE ao atual. Um item
+        # antigo pode ter um mês que já não está nela — incluímos o mês do próprio
+        # item para que salvar sem mexer no mês não o troque sem querer.
+        mes_atual = str(registro["mes"]).strip()
+        opcoes_mes = list(meses_futuros)
+        if mes_atual and mes_atual not in opcoes_mes:
+            opcoes_mes = [mes_atual] + opcoes_mes
+        idx_mes = opcoes_mes.index(mes_atual) if mes_atual in opcoes_mes else 0
+
+        # Categoria: mantém a categoria atual mesmo que ela não esteja mais na lista.
+        cats_base = CAT_DESP if eh_despesa else CAT_REC
+        cat_atual = str(registro.get("categoria", "")).strip()
+        opcoes_cat = [""] + list(cats_base)
+        if cat_atual and cat_atual not in opcoes_cat:
+            opcoes_cat.append(cat_atual)
+        idx_cat = opcoes_cat.index(cat_atual) if cat_atual in opcoes_cat else 0
+
+        with st.form(f"form_editar_planejamento_{id_pl}"):
+            pe1, pe2 = st.columns([1, 1])
+            desc_edit = pe1.text_input("Descrição *", value=str(registro["descricao"]))
+            mes_edit  = pe2.selectbox("Mês de competência *", opcoes_mes, index=idx_mes,
+                                      format_func=fmt_mes_str_pt)
+            pe3, pe4 = st.columns([1, 1])
+            cat_edit = pe3.selectbox("Categoria", opcoes_cat, index=idx_cat)
+            obs_edit = pe4.text_input("Observação", value=str(registro.get("observacao", "")))
+            salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",
+                                                  use_container_width=True)
+
+        if salvar_edicao:
+            erros = []
+            if not desc_edit.strip():
+                erros.append("Preencha a descrição.")
+            try:
+                v_edit = parse_valor(valor_edit_txt)
+                if not (0 < v_edit <= 1_000_000):
+                    erros.append("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
+            except Exception:
+                erros.append("Valor inválido.")
+                v_edit = 0
+
+            if erros:
+                for e in erros: st.error(e)
+            else:
+                try:
+                    atualizar_planejamento(id_pl, desc_edit.strip(), float(v_edit), mes_edit,
+                                           cat_edit, obs_edit.strip())
+                    invalidar_cache_panorama()
+                    concluir_com_sucesso(f"✅ Item de planejamento #{id_pl} atualizado com sucesso!",
+                                         campo_valor_base_key=f"pl_edit_valor_{id_pl}")
+                except Exception as e:
+                    st.error(f"Erro ao atualizar: {e}")
+
+
 def _sub_lancamentos_futuros(meses_futuros):
     st.subheader("Lançar item de Planejamento")
     exibir_mensagem_pendente()
@@ -182,6 +256,7 @@ def _sub_lancamentos_futuros(meses_futuros):
         idx_sel = rows_pl[0]
         id_pl   = int(df_pl_list.iloc[idx_sel]["id"])
         desc_pl_sel = df_pl_list.iloc[idx_sel]["descricao"]
+        _bloco_edicao_planejamento(df_pl_list.iloc[idx_sel], meses_futuros)
         confirmar_pl = st.checkbox(f"Confirmo a exclusão do item de planejamento #{id_pl} — {desc_pl_sel}",
                                    key=f"confirmar_excl_pl_{id_pl}")
         if confirmar_pl:
@@ -198,7 +273,7 @@ def _sub_lancamentos_futuros(meses_futuros):
             st.button("🗑 Excluir item de planejamento", type="primary",
                       use_container_width=True, disabled=True, key="btn_excl_pl_dis")
     else:
-        st.info("💡 Clique em um item na tabela acima para liberar a exclusão.")
+        st.info("💡 Clique em um item na tabela acima para editar ou excluir.")
 
 
 def _sub_recorrentes():

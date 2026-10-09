@@ -14,6 +14,7 @@ explícito — ver `get_panorama` / `invalidar_cache_panorama` abaixo.
 
 from datetime import datetime
 
+import gspread
 import pandas as pd
 import streamlit as st
 
@@ -239,6 +240,34 @@ def salvar_planejamento_replicado(tipo, desc, valor, meses, cat, obs):
         for mes in meses
     ]
     append_linhas_por_nome_ids_unicos(ws, rows)
+    carregar_planejamento.clear()
+
+
+def atualizar_planejamento(pid: int, desc: str, valor: float, mes: str, cat: str, obs: str):
+    """
+    Edita um item de planejamento já lançado: descrição, valor, mês de
+    competência, categoria e observação. NÃO mexe em `tipo` (despesa/receita):
+    a lista de categorias depende dele, então quem precisar trocar o tipo deve
+    excluir o item e lançá-lo de novo. Também preserva `criado_em` e
+    `lancado_por`.
+
+    Escrita por NOME de coluna e em lote (um único batch_update, RAW — o mês
+    'YYYY-MM' é gravado como texto, sem o Sheets converter em data).
+    Quem chama deve invalidar o cache do panorama (`invalidar_cache_panorama`).
+    """
+    ws = get_sheet("planejamento")
+    df = sheet_to_df(ws)
+    cabecalho = ws.row_values(1)
+    campos = {"descricao": desc, "valor": valor, "mes": mes,
+              "categoria": cat, "observacao": obs}
+    updates = []
+    for idx in df[df["id"].astype(str) == str(pid)].index.tolist():
+        row_num = idx + 2
+        for campo, v in campos.items():
+            col = cabecalho.index(campo) + 1
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_num, col), "values": [[v]]})
+    if updates:
+        ws.batch_update(updates, value_input_option="RAW")
     carregar_planejamento.clear()
 
 
