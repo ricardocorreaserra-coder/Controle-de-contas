@@ -21,11 +21,19 @@ import streamlit as st
 
 from sheets.loaders import carregar_emprestimos
 from logica.emprestimos import (
-    salvar_emprestimo, excluir_emprestimo, sincronizar_baixas_automaticas,
-    calcular_valor_total_devido,
+    salvar_emprestimo, atualizar_emprestimo, excluir_emprestimo,
+    sincronizar_baixas_automaticas, calcular_valor_total_devido,
 )
+from utils.datas import data_iso
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
+from utils.widgets import (
+    campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor,
+)
+
+# Mensagem de sucesso da EDIÇÃO. Fica numa chave própria (e não na genérica de
+# `concluir_com_sucesso`) porque esta é consumida pela sub-aba de cadastro,
+# que é desenhada antes — a mensagem apareceria na aba errada.
+_CHAVE_MSG_EDICAO = "_msg_emprestimo_editado"
 
 
 def _preparar_df(df_e: pd.DataFrame) -> pd.DataFrame:
@@ -94,8 +102,77 @@ def _sub_cadastro():
                 st.error(f"Erro ao salvar empréstimo: {e}")
 
 
+def _bloco_edicao(eid: int, registro) -> None:
+    """Expander "✏️ Editar empréstimo" do empréstimo selecionado na tabela."""
+    with st.expander("✏️ Editar empréstimo", expanded=False):
+        st.caption(
+            "Use para corrigir um cadastro feito com valores errados. O **valor total "
+            "devido** é recalculado sozinho (parcela × parcelas restantes). Se a data "
+            "de vencimento informada já tiver passado, o app dá baixa automática nas "
+            "parcelas vencidas logo após salvar."
+        )
+
+        # Fora do st.form de propósito — ver comentário em _sub_cadastro.
+        ce1, _ = st.columns(2)
+        with ce1:
+            valor_edit_txt = campo_valor_moeda(
+                "Valor da Parcela (R$) *", base_key=f"emp_edit_valor_{eid}",
+                value=fmt_moeda(registro["valor_parcela"]).replace("R$ ", ""),
+            )
+
+        try:
+            data_atual = date.fromisoformat(data_iso(registro["proxima_data_vencimento"]))
+        except Exception:
+            data_atual = date.today()
+
+        with st.form(f"form_editar_emprestimo_{eid}"):
+            ee1, ee2 = st.columns(2)
+            desc_edit  = ee1.text_input("Descrição *", value=str(registro["descricao"]))
+            banco_edit = ee2.text_input("Banco *", value=str(registro["banco"]))
+
+            ee3, ee4 = st.columns(2)
+            parcelas_edit = ee3.number_input(
+                "Quantidade de parcelas restantes *", min_value=0, max_value=600, step=1,
+                value=min(max(int(registro["parcelas_restantes"]), 0), 600),
+                help="0 = empréstimo quitado.",
+            )
+            venc_edit = ee4.date_input(
+                "Data de vencimento da próxima parcela *", value=data_atual, format="DD/MM/YYYY"
+            )
+            salvar_edicao = st.form_submit_button(
+                "💾 Salvar alterações", type="primary", use_container_width=True
+            )
+
+        if salvar_edicao:
+            erros = []
+            if not desc_edit.strip():  erros.append("Preencha a descrição.")
+            if not banco_edit.strip(): erros.append("Preencha o banco.")
+            try:
+                valor_edit = parse_valor(valor_edit_txt)
+                if not (0 < valor_edit <= 1_000_000):
+                    erros.append("Valor da parcela deve estar entre R$ 0,01 e R$ 1.000.000,00.")
+            except Exception:
+                erros.append("Valor da parcela inválido.")
+                valor_edit = 0
+
+            if erros:
+                for e in erros: st.error(e)
+            else:
+                try:
+                    atualizar_emprestimo(eid, desc_edit.strip(), banco_edit.strip(),
+                                         float(valor_edit), int(parcelas_edit), venc_edit)
+                    limpar_campo_valor(f"emp_edit_valor_{eid}")
+                    st.session_state[_CHAVE_MSG_EDICAO] = f"✅ Empréstimo #{eid} atualizado com sucesso!"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao atualizar: {e}")
+
+
 def _sub_lista():
     st.subheader("Meus Empréstimos")
+    msg_edicao = st.session_state.pop(_CHAVE_MSG_EDICAO, None)
+    if msg_edicao:
+        st.success(msg_edicao)
     df_e = carregar_emprestimos()
     if df_e.empty:
         st.info("Nenhum empréstimo cadastrado ainda.")
@@ -127,7 +204,7 @@ def _sub_lista():
     st.markdown("#### Ações")
     rows_emp = [i for i in event.selection.rows if 0 <= i < len(df)]
     if not rows_emp:
-        st.info("💡 Clique em um empréstimo na tabela acima para ver detalhes ou excluir.")
+        st.info("💡 Clique em um empréstimo na tabela acima para editar ou excluir.")
         return
 
     idx_sel  = rows_emp[0]
@@ -141,6 +218,8 @@ def _sub_lista():
         f"📋 Selecionado: **#{eid} — {desc_sel} ({banco_sel})** | "
         f"Parcelas restantes: **{parcelas_sel}** | Devido: **{fmt_moeda(valor_total_sel)}**"
     )
+
+    _bloco_edicao(eid, df.iloc[idx_sel])
 
     if parcelas_sel <= 0:
         st.success("🎉 Este empréstimo já está quitado!")
