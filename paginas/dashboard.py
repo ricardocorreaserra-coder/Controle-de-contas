@@ -13,6 +13,29 @@ from utils.datas import seletor_mes_ano, add_months, fmt_mes_pt
 from utils.formatacao import fmt_moeda, card_html
 
 
+def _rosquinha(grp: pd.DataFrame, coluna_nomes: str, cores):
+    """
+    Rosquinha (pizza com furo) usada nos gráficos por categoria e por pagamento.
+
+    Rótulo da fatia: só o PERCENTUAL. O nome da categoria fica na legenda
+    (abaixo do gráfico) e no hover. Antes cada fatia mostrava "nome + %", e
+    nas fatias pequenas esse texto longo era jogado para fora da rosquinha e
+    cortado na borda do gráfico ("ducação", "porte"). `automargin=True` deixa o
+    Plotly abrir a margem sozinho se algum rótulo ainda ficar para fora.
+    NÃO passar `template=` aqui — o padrão do Streamlit já segue o tema.
+    """
+    fig = px.pie(grp, values="Valor", names=coluna_nomes, hole=0.4, height=300,
+                 color_discrete_sequence=cores)
+    fig.update_traces(
+        textinfo="percent", textposition="auto",
+        insidetextorientation="horizontal", automargin=True,
+        hovertemplate="<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>",
+    )
+    fig.update_layout(separators=",.", margin=dict(t=10, b=10, l=10, r=10),
+                      legend=dict(orientation="h", y=-0.15))
+    return fig
+
+
 def render():
     st.markdown("##### Filtro de Período")
     mes_dash = seletor_mes_ano("dash")
@@ -70,10 +93,7 @@ def render():
         if not desp_mes.empty and "categoria" in desp_mes.columns:
             grp = desp_mes.groupby("categoria")["valor"].sum().reset_index()
             grp.columns = ["Categoria", "Valor"]
-            fig2 = px.pie(grp, values="Valor", names="Categoria", hole=0.4, height=300,
-                          color_discrete_sequence=px.colors.qualitative.Set2)
-            fig2.update_traces(textinfo='percent+label', hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>')
-            fig2.update_layout(separators=',.', margin=dict(t=10, b=10, l=10, r=10))
+            fig2 = _rosquinha(grp, "Categoria", px.colors.qualitative.Set2)
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Sem dados para o período.")
@@ -83,10 +103,7 @@ def render():
         if not desp_mes.empty and "pagamento" in desp_mes.columns:
             grp2 = desp_mes.groupby("pagamento")["valor"].sum().reset_index()
             grp2.columns = ["Pagamento", "Valor"]
-            fig3 = px.pie(grp2, values="Valor", names="Pagamento", hole=0.4, height=300,
-                          color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig3.update_traces(textinfo='percent+label', hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>')
-            fig3.update_layout(separators=',.', margin=dict(t=10, b=10, l=10, r=10))
+            fig3 = _rosquinha(grp2, "Pagamento", px.colors.qualitative.Pastel)
             st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Sem dados para o período.")
