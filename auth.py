@@ -39,19 +39,27 @@ def verificar_autenticacao():
 
     instrucao = ("Entre com seu usuário e senha" if modo_multiusuario
                  else "Digite a senha para acessar")
-    st.markdown(f"""
-    <div class="login-box">
-        <div style="font-size:2.5rem">💰</div>
-        <h2 style="margin:0.5rem 0 0.25rem">Controle de Contas</h2>
-        <p style="opacity:0.7;margin-bottom:1.5rem">{instrucao}</p>
-    </div>
-    """, unsafe_allow_html=True)
 
     # B-01 · Limite simples de tentativas para dificultar força bruta
     bloqueado = st.session_state["tentativas_login"] >= 5
 
+    # Layout: UM único cartão com borda (st.container(border=True)) contendo
+    # título, instrução e campos, centralizado na página. Antes o título ficava
+    # numa caixa HTML que fechava ANTES dos campos, que apareciam soltos fora
+    # dela, e o <h2> ganhava espaçamento extra do Streamlit (vão grande entre
+    # título e instrução). Aqui o título usa <div> (sem espaçamento embutido) e
+    # nenhuma cor fixa — a borda e o texto seguem o tema claro/escuro.
+    st.markdown('<div style="height:3rem"></div>', unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    with col2, st.container(border=True):
+        st.markdown(f"""
+        <div style="text-align:center;padding:0.5rem 0 1rem">
+            <div style="font-size:2.5rem;line-height:1.2">💰</div>
+            <div style="font-size:1.75rem;font-weight:700;margin:0.25rem 0">Controle de Contas</div>
+            <div style="opacity:0.7">{instrucao}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
         if bloqueado:
             st.error("Muitas tentativas incorretas. Recarregue a página para tentar novamente.")
             st.stop()
