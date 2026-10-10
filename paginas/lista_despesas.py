@@ -1,6 +1,7 @@
 """Aba: ☰ Despesas — listagem, filtros, edição e exclusão."""
 
 from datetime import datetime
+from functools import partial
 
 import pandas as pd
 import streamlit as st
@@ -11,9 +12,12 @@ from logica.despesas import (
     excluir_despesa, atualizar_despesa, despesa_esta_pendente,
     sincronizar_baixas_automaticas_despesas, marcar_despesa_paga,
 )
-from utils.datas import seletor_mes_ano
+from logica.relatorios import gerar_pdf, Secao
+from utils.datas import seletor_mes_ano, fmt_mes_str_pt
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
+from utils.widgets import (
+    campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
+)
 
 
 def render():
@@ -93,6 +97,16 @@ def render():
         nomes.append("Status")
     df_show.columns = nomes
 
+    botao_pdf(
+        "Imprimir despesas (PDF)",
+        partial(gerar_pdf, "Despesas",
+                f"Período: {fmt_mes_str_pt(fmes)}  |  Pagamento: {fpag}  |  Categoria: {fcat}",
+                kpis=[("Total", fmt_moeda(total), "azul"), ("Crédito", fmt_moeda(cc_v), "azul"),
+                      ("Outros", fmt_moeda(total - cc_v), "verde")],
+                secoes=[Secao("", df_show.copy())]),
+        f"despesas_{fmes}.pdf", key="pdf_despesas",
+    )
+
     event_d = st.dataframe(df_show, use_container_width=True, hide_index=True,
                            on_select="rerun", selection_mode="single-row")
 
@@ -136,9 +150,8 @@ def render():
                 except Exception:
                     data_atual = datetime.today().date()
                 data_edit = ee3.date_input("Data", value=data_atual, format="DD/MM/YYYY")
-                cat_atual = str(registro["categoria"])
-                idx_cat = ([""] + CAT_DESP).index(cat_atual) if cat_atual in CAT_DESP else 0
-                cat_edit = ee4.selectbox("Categoria", [""] + CAT_DESP, index=idx_cat)
+                cat_opcoes, idx_cat = opcoes_categoria(CAT_DESP, registro["categoria"])
+                cat_edit = ee4.selectbox("Categoria", cat_opcoes, index=idx_cat)
 
                 obs_edit = st.text_input("Observação", value=str(registro.get("observacao", "")))
                 salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",

@@ -1,6 +1,7 @@
 """Aba: 🔮 Planejamento 12 Meses — panorama, lançamentos futuros e recorrentes."""
 
 from datetime import date
+from functools import partial
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -16,9 +17,10 @@ from logica.planejamento import (
     excluir_planejamento,
 )
 from logica.exportacao import gerar_excel_panorama, gerar_csv_panorama
+from logica.relatorios import gerar_pdf, Secao
 from utils.datas import proximos_12_meses, fmt_mes_str_pt
 from utils.formatacao import fmt_moeda, parse_valor, converter_data_para_exibicao
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf
 
 
 def _sub_panorama(meses_futuros):
@@ -80,7 +82,7 @@ def _sub_panorama(meses_futuros):
     st.markdown("---")
     st.markdown("##### ⬇️ Exportar projeção")
     nome_arquivo = f"planejamento_{date.today().strftime('%Y%m%d')}"
-    exp_col1, exp_col2 = st.columns(2)
+    exp_col1, exp_col2, exp_col3 = st.columns(3)
     with exp_col1:
         try:
             excel_bytes = gerar_excel_panorama(df_linhas, df_resumo)
@@ -107,6 +109,23 @@ def _sub_panorama(meses_futuros):
             )
         except Exception as e:
             st.error(f"Erro ao gerar CSV: {e}")
+    with exp_col3:
+        secoes_pdf = [Secao("Resumo mês a mês", df_resumo_show.copy())]
+        if not df_mes_det.empty:
+            secoes_pdf.append(Secao(f"Detalhamento - {fmt_mes_str_pt(mes_det_sel)}", df_mes_det.copy()))
+        rec_12 = float(df_resumo["Receitas"].sum())
+        desp_12 = float(df_resumo["Despesas (total)"].sum())
+        botao_pdf(
+            "Imprimir panorama (PDF)",
+            partial(gerar_pdf, "Planejamento - Panorama 12 Meses",
+                    "Projeção de receitas e despesas por mês",
+                    kpis=[("Receitas (12 meses)", fmt_moeda(rec_12), "verde"),
+                          ("Despesas (12 meses)", fmt_moeda(desp_12), "vermelho"),
+                          ("Saldo projetado (12 meses)", fmt_moeda(rec_12 - desp_12),
+                           "verde" if rec_12 >= desp_12 else "vermelho")],
+                    secoes=secoes_pdf),
+            f"{nome_arquivo}.pdf", key="btn_export_pdf",
+        )
 
 
 def _bloco_edicao_planejamento(registro, meses_futuros) -> None:
@@ -248,6 +267,19 @@ def _sub_lancamentos_futuros(meses_futuros):
     df_pl_show["valor"] = df_pl_show["valor"].apply(fmt_moeda)
     df_pl_show["mes"]   = df_pl_show["mes"].apply(fmt_mes_str_pt)
     df_pl_show.columns  = ["ID", "Tipo", "Descrição", "Valor", "Mês", "Categoria", "Obs"]
+
+    _eh_rec = df_pl_list["tipo"].astype(str).str.strip().str.lower() == "receita"
+    rec_pl = float(df_pl_list.loc[_eh_rec, "valor"].sum())
+    desp_pl = float(df_pl_list.loc[~_eh_rec, "valor"].sum())
+    botao_pdf(
+        "Imprimir lançamentos futuros (PDF)",
+        partial(gerar_pdf, "Planejamento - Lançamentos Futuros",
+                "Itens lançados manualmente no planejamento",
+                kpis=[("Receitas planejadas", fmt_moeda(rec_pl), "verde"),
+                      ("Despesas planejadas", fmt_moeda(desp_pl), "vermelho")],
+                secoes=[Secao("", df_pl_show.copy())]),
+        f"planejamento_lancamentos_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_lanc_futuros",
+    )
 
     event_pl = st.dataframe(df_pl_show, use_container_width=True, hide_index=True,
                             on_select="rerun", selection_mode="single-row", key="df_planejamento_list")

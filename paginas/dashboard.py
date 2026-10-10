@@ -1,6 +1,7 @@
 """Aba: Dashboard — visão geral do mês selecionado."""
 
 from datetime import date
+from functools import partial
 
 import pandas as pd
 import plotly.express as px
@@ -9,8 +10,10 @@ import streamlit as st
 
 from sheets.loaders import carregar_despesas, carregar_receitas
 from logica.despesas import despesa_esta_pendente
-from utils.datas import seletor_mes_ano, add_months, fmt_mes_pt
+from logica.relatorios import pdf_dashboard
+from utils.datas import seletor_mes_ano, add_months, fmt_mes_pt, fmt_mes_str_pt
 from utils.formatacao import fmt_moeda, card_html
+from utils.widgets import botao_pdf
 
 
 def _rosquinha(grp: pd.DataFrame, coluna_nomes: str, cores):
@@ -39,6 +42,7 @@ def _rosquinha(grp: pd.DataFrame, coluna_nomes: str, cores):
 def render():
     st.markdown("##### Filtro de Período")
     mes_dash = seletor_mes_ano("dash")
+    slot_pdf = st.container()   # o botão de impressão é preenchido no fim, quando os dados já existem
 
     df_d = carregar_despesas()
     df_r = carregar_receitas()
@@ -107,3 +111,18 @@ def render():
             st.plotly_chart(fig3, use_container_width=True)
         else:
             st.info("Sem dados para o período.")
+
+    # Impressão (PDF) — mesmas contas e filtros da tela
+    def _por(coluna, nome):
+        if desp_mes.empty or coluna not in desp_mes.columns:
+            return pd.DataFrame()
+        g = desp_mes.groupby(coluna)["valor"].sum().reset_index()
+        g.columns = [nome, "Valor"]
+        return g
+    with slot_pdf:
+        botao_pdf(
+            "Imprimir Dashboard (PDF)",
+            partial(pdf_dashboard, fmt_mes_str_pt(mes_dash), total_rec, total_desp, saldo,
+                    df_hist.copy(), _por("categoria", "Categoria"), _por("pagamento", "Pagamento")),
+            f"dashboard_{mes_dash}.pdf", key="pdf_dashboard",
+        )

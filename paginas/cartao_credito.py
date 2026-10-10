@@ -3,6 +3,7 @@
 import calendar
 import re
 from datetime import date
+from functools import partial
 
 import pandas as pd
 import plotly.express as px
@@ -18,9 +19,10 @@ from logica.fechamentos import (
     fechamentos_ordenados_por_cartao, salvar_fechamento, excluir_fechamento,
     detectar_buracos_fechamentos,
 )
+from logica.relatorios import gerar_pdf, Secao, pdf_faturas_futuras
 from utils.datas import seletor_mes_ano, hoje_str, add_months, fmt_mes_str_pt, data_iso as _data_para_iso
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf
 
 
 def _preparar_df_parcelas(df_p: pd.DataFrame, df_d: pd.DataFrame) -> pd.DataFrame:
@@ -111,6 +113,17 @@ def _sub_parcelas(df_p, df_p2, hoje):
                             "numero": "Parc.", "total": "Total", "valor": "Valor",
                             "data_compra": "Data da Compra",
                             "vencimento": "Vencimento"}, inplace=True)
+
+    botao_pdf(
+        "Imprimir parcelas (PDF)",
+        partial(gerar_pdf, "Cartão de Crédito - Parcelas",
+                f"Cartão: {fc_cartao}  |  Status: {fc_status}",
+                kpis=[("A pagar total", fmt_moeda(pend), "laranja"),
+                      ("Vencidas", f"{venc} parcela(s)", "vermelho"),
+                      ("Pagas", f"{pagas} parcela(s)", "verde")],
+                secoes=[Secao("", df_show.copy())]),
+        f"parcelas_cartao_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_parcelas",
+    )
 
     event_p = st.dataframe(df_show, use_container_width=True, hide_index=True,
                            on_select="rerun", selection_mode="single-row",
@@ -351,6 +364,7 @@ def _sub_faturas_futuras(df_p, df_p2):
         st.success("🎉 Todas as faturas estão totalmente pagas! Sem parcelas pendentes.")
         return
 
+    slot_pdf = st.container()   # botão de impressão: preenchido no fim da função
     df_pend["Mês Vencimento"] = df_pend["vencimento"].astype(str).str.slice(0, 7)
     df_fat_group = df_pend.groupby(["Mês Vencimento", "cartao"])["valor"].sum().reset_index()
     df_pivot     = df_fat_group.pivot(index="Mês Vencimento", columns="cartao", values="valor").fillna(0.0)
@@ -381,6 +395,7 @@ def _sub_faturas_futuras(df_p, df_p2):
     if sel_cartao_det != "Todos":
         df_detalhe = df_detalhe[df_detalhe["cartao"] == sel_cartao_det]
 
+    df_det_show = None
     if df_detalhe.empty:
         st.info("Nenhum lançamento pendente encontrado para este filtro.")
     else:
@@ -390,6 +405,15 @@ def _sub_faturas_futuras(df_p, df_p2):
         df_det_show["vencimento"] = df_det_show["vencimento"].apply(converter_data_para_exibicao)
         df_det_show.columns = ["Descrição/Item", "Cartão", "Parcela", "Total Parc.", "Valor", "Vencimento"]
         st.dataframe(df_det_show, use_container_width=True, hide_index=True)
+
+    with slot_pdf:
+        botao_pdf(
+            "Imprimir faturas futuras (PDF)",
+            partial(pdf_faturas_futuras, df_pend.copy(),
+                    df_det_show.copy() if df_det_show is not None else None,
+                    f"Detalhamento - {fmt_mes_str_pt(sel_mes_det)} ({sel_cartao_det})"),
+            f"faturas_futuras_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_faturas",
+        )
 
 
 def _sub_lancar_historico():

@@ -1,6 +1,7 @@
 """Aba: 🏦 Conta Corrente — extrato consolidado de receitas e despesas."""
 
 from datetime import datetime
+from functools import partial
 
 import pandas as pd
 import streamlit as st
@@ -8,9 +9,12 @@ import streamlit as st
 from config import CAT_REC
 from sheets.loaders import carregar_despesas, carregar_receitas
 from logica.receitas import excluir_receita, atualizar_receita
-from utils.datas import seletor_mes_ano
+from logica.relatorios import gerar_pdf, Secao
+from utils.datas import seletor_mes_ano, fmt_mes_str_pt
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
+from utils.widgets import (
+    campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
+)
 
 
 def render():
@@ -73,6 +77,15 @@ def render():
         return
 
     df_extrato = pd.DataFrame(extrato)
+    botao_pdf(
+        "Imprimir extrato (PDF)",
+        partial(gerar_pdf, "Conta Corrente", f"Período: {fmt_mes_str_pt(mes_cc)}",
+                kpis=[("Total receitas", fmt_moeda(total_rec_cc), "verde"),
+                      ("Total despesas", fmt_moeda(total_desp_cc), "vermelho"),
+                      ("Saldo acumulado", fmt_moeda(saldo_cc), "verde" if saldo_cc >= 0 else "vermelho")],
+                secoes=[Secao("", df_extrato.copy())]),
+        f"conta_corrente_{mes_cc}.pdf", key="pdf_conta_corrente",
+    )
     event_cc = st.dataframe(df_extrato, use_container_width=True, hide_index=True,
                             on_select="rerun", selection_mode="single-row")
 
@@ -107,9 +120,8 @@ def render():
                         data_atual = datetime.today().date()
                     data_edit = re2.date_input("Data", value=data_atual, format="DD/MM/YYYY")
 
-                    cat_atual = str(mov_sel["Categoria"])
-                    idx_cat = ([""] + CAT_REC).index(cat_atual) if cat_atual in CAT_REC else 0
-                    cat_edit = st.selectbox("Categoria", [""] + CAT_REC, index=idx_cat)
+                    cat_opcoes, idx_cat = opcoes_categoria(CAT_REC, mov_sel["Categoria"])
+                    cat_edit = st.selectbox("Categoria", cat_opcoes, index=idx_cat)
                     obs_edit = st.text_input("Observação", value=str(mov_sel.get("Observação", "")))
 
                     salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",

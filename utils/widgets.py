@@ -95,3 +95,48 @@ def exibir_mensagem_pendente():
     msg = st.session_state.pop("_msg_sucesso_pendente", None)
     if msg:
         st.success(msg)
+
+
+def opcoes_categoria(categorias, cat_atual):
+    """
+    Opções do selectbox de categoria nas telas de EDIÇÃO + índice da atual.
+
+    Se a categoria já gravada no lançamento não estiver (mais) na lista —
+    por ter sido renomeada/removida do config.py —, ela é acrescentada ao
+    final das opções. Sem isso, o selectbox cairia em "vazio" e salvar a
+    edição APAGARIA a categoria sem a pessoa perceber.
+    """
+    if cat_atual is None or cat_atual != cat_atual:   # None ou NaN
+        cat_atual = ""
+    atual = str(cat_atual).strip()
+    opcoes = [""] + list(categorias)
+    if atual and atual not in opcoes:
+        opcoes.append(atual)
+    return opcoes, opcoes.index(atual) if atual in opcoes else 0
+
+
+def botao_pdf(rotulo: str, gerar, nome_arquivo: str, key: str) -> None:
+    """
+    Botão "🖨️ ..." que baixa um PDF da tela para IMPRESSÃO.
+
+    `gerar` é um callable (normalmente um functools.partial de uma função de
+    logica/relatorios.py, já com os dados da tela) que aceita `emitido_por=`
+    e devolve os bytes do PDF. O PDF só é gerado quando a pessoa CLICA
+    (o Streamlit chama o callable nesse momento), então não pesa no uso
+    normal do app, e `on_click="ignore"` evita recarregar a página no clique.
+
+    Passe sempre CÓPIAS dos DataFrames no partial (`df.copy()`): o callable
+    roda depois, e a tela pode ter alterado a variável original nesse meio tempo.
+    """
+    from functools import partial
+
+    usuario = str(st.session_state.get("usuario", "") or "")
+    st.download_button(
+        f"🖨️ {rotulo}",
+        data=partial(gerar, emitido_por=usuario),
+        file_name=nome_arquivo,
+        mime="application/pdf",
+        key=key,
+        on_click="ignore",
+        use_container_width=True,
+    )

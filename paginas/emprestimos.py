@@ -15,6 +15,7 @@ REGRAS DE NEGÓCIO:
 """
 
 from datetime import date
+from functools import partial
 
 import pandas as pd
 import streamlit as st
@@ -24,10 +25,12 @@ from logica.emprestimos import (
     salvar_emprestimo, atualizar_emprestimo, excluir_emprestimo,
     sincronizar_baixas_automaticas, calcular_valor_total_devido,
 )
+from logica.relatorios import gerar_pdf, Secao
 from utils.datas import data_iso
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor,
+    botao_pdf,
 )
 
 # Mensagem de sucesso da EDIÇÃO. Fica numa chave própria (e não na genérica de
@@ -197,6 +200,16 @@ def _sub_lista():
     df_show["proxima_data_vencimento"] = df_show["proxima_data_vencimento"].apply(converter_data_para_exibicao)
     df_show.columns = ["ID", "Descrição", "Banco", "Valor Parcela", "Parcelas Restantes",
                         "Próximo Vencimento", "Valor Total Devido"]
+
+    botao_pdf(
+        "Imprimir empréstimos (PDF)",
+        partial(gerar_pdf, "Empréstimos", f"Posição em {date.today().strftime('%d/%m/%Y')}",
+                kpis=[("Total devido (todos)", fmt_moeda(total_devido), "laranja"),
+                      ("Empréstimos ativos", str(ativos), "azul"),
+                      ("Quitados", str(quitados), "verde")],
+                secoes=[Secao("", df_show.copy())]),
+        f"emprestimos_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_emprestimos",
+    )
 
     event = st.dataframe(df_show, use_container_width=True, hide_index=True,
                          on_select="rerun", selection_mode="single-row", key="df_emprestimos_list")
