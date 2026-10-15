@@ -17,13 +17,15 @@ PAGAMENTOS   = ["Dinheiro", "Cartão de crédito", "Débito", "Pix", "Vale alime
 # categorias é seguro; RENOMEAR/REMOVER não atualiza lançamentos antigos (que
 # continuam com o nome velho na planilha). A ordem aqui é a ordem das caixas de
 # seleção — mais usadas primeiro e "Outros" sempre por último.
-CAT_DESP     = ["Alimentação", "Restaurantes e delivery", "Transporte", "Moradia",
-                 "Contas da casa", "Saúde", "Educação", "Filhos e família", "Lazer",
+# Removidas de propósito (lançamentos antigos mantêm o nome velho): despesa "Moradia"
+# e receita "Aluguel recebido".
+CAT_DESP     = ["Alimentação", "Restaurantes e delivery", "Transporte",
+                 "Contas da casa", "Obras", "Saúde", "Educação", "Filhos e família", "Lazer",
                  "Viagens", "Assinaturas e serviços", "Vestuário", "Cuidados pessoais",
                  "Pets", "Presentes e doações", "Seguros", "Impostos e taxas",
                  "Despesa bancária", "Outros"]
 CAT_REC      = ["Salário", "Freelance", "13º e férias", "Investimentos",
-                 "Aluguel recebido", "Reembolsos", "Outros"]
+                 "Reembolsos", "Outros"]
 DIA_VENCIMENTO_PADRAO = 10  # usado apenas se um cartão referenciado não for encontrado no cadastro
 
 # ── Google Sheets ──────────────────────────────────────────────────────────────
