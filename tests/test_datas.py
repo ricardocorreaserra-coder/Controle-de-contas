@@ -7,9 +7,14 @@ ela não é uma função pura.
 """
 
 import re
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
+import pytest
+
+import utils.datas as datas_mod
 from utils.datas import (
+    agora_br,
+    hoje_br,
     fmt_mes_pt,
     fmt_mes_str_pt,
     add_months,
@@ -97,7 +102,65 @@ class TestHojeStr:
     def test_formato_e_valor(self):
         resultado = hoje_str()
         assert re.match(r"^\d{4}-\d{2}-\d{2}$", resultado)
-        assert resultado == date.today().strftime("%Y-%m-%d")
+        assert resultado == hoje_br().strftime("%Y-%m-%d")
+
+
+# ── fuso de Brasília (hoje_br / agora_br) ─────────────────────────────────────
+#
+# O servidor do Streamlit Cloud roda em UTC. Entre ~21h e 24h no Brasil, o
+# `date.today()` dele já é o dia seguinte. Estes testes congelam o relógio em
+# instantes UTC e conferem que o app enxerga o dia de BRASÍLIA.
+
+def _congelar(monkeypatch, ano, mes, dia, hora, minuto=0):
+    """Congela 'agora' num instante dado em UTC (como o servidor enxerga)."""
+    instante_utc = datetime(ano, mes, dia, hora, minuto, tzinfo=timezone.utc)
+
+    class RelogioFixo(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instante_utc.astimezone(tz) if tz else instante_utc
+
+    monkeypatch.setattr(datas_mod, "datetime", RelogioFixo)
+
+
+class TestFusoBrasilia:
+
+    def test_agora_br_tem_offset_menos_3(self):
+        assert agora_br().utcoffset() == timedelta(hours=-3)
+
+    def test_noite_no_brasil_ainda_e_o_dia_anterior_ao_do_servidor_utc(self, monkeypatch):
+        # 01/11 01:30 UTC  ==  31/10 22:30 em Brasília
+        _congelar(monkeypatch, 2026, 11, 1, 1, 30)
+        assert hoje_br() == date(2026, 10, 31)
+        assert hoje_str() == "2026-10-31"
+
+    def test_logo_apos_a_meia_noite_de_brasilia_vira_o_dia(self, monkeypatch):
+        # 01/11 03:00 UTC  ==  01/11 00:00 em Brasília
+        _congelar(monkeypatch, 2026, 11, 1, 3, 0)
+        assert hoje_br() == date(2026, 11, 1)
+
+    def test_um_minuto_antes_da_meia_noite_de_brasilia_ainda_e_o_dia_anterior(self, monkeypatch):
+        # 01/11 02:59 UTC  ==  31/10 23:59 em Brasília
+        _congelar(monkeypatch, 2026, 11, 1, 2, 59)
+        assert hoje_br() == date(2026, 10, 31)
+
+    def test_de_manha_e_de_tarde_nao_muda_nada(self, monkeypatch):
+        for hora_utc in (10, 15, 20):          # 07h, 12h, 17h em Brasília
+            _congelar(monkeypatch, 2026, 10, 31, hora_utc)
+            assert hoje_br() == date(2026, 10, 31)
+
+    def test_proximos_12_meses_na_virada_de_mes_comeca_no_mes_certo(self, monkeypatch):
+        # 31/10 em Brasília (22h30): o 1º item da lista deve ser 2026-11, não 2026-12
+        _congelar(monkeypatch, 2026, 11, 1, 1, 30)
+        meses = proximos_12_meses()
+        assert meses[0] == "2026-11"
+        assert meses[-1] == "2027-10"
+
+    def test_virada_de_ano(self, monkeypatch):
+        # 01/01/2027 01:30 UTC == 31/12/2026 22:30 em Brasília
+        _congelar(monkeypatch, 2027, 1, 1, 1, 30)
+        assert hoje_str() == "2026-12-31"
+        assert proximos_12_meses()[0] == "2027-01"
 
 
 # ── proximos_12_meses ────────────────────────────────────────────────────────────
@@ -112,7 +175,7 @@ class TestProximos12Meses:
             assert re.match(r"^\d{4}-\d{2}$", mes)
 
     def test_primeiro_mes_e_o_mes_seguinte_ao_atual(self):
-        hoje = date.today()
+        hoje = hoje_br()
         esperado = add_months(date(hoje.year, hoje.month, 1), 1).strftime("%Y-%m")
         assert proximos_12_meses()[0] == esperado
 

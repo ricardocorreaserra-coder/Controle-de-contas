@@ -1,11 +1,11 @@
 """Aba: Lançar Receita."""
 
-from datetime import date
 
 import streamlit as st
 
 from config import CAT_REC
 from logica.receitas import salvar_receita
+from utils.datas import hoje_br
 from utils.formatacao import parse_valor
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
@@ -24,7 +24,7 @@ def render():
         rdesc = st.text_input("Descrição *")
 
         r3, r4 = st.columns(2)
-        rdata = r3.date_input("Data *", value=date.today(), format="DD/MM/YYYY")
+        rdata = r3.date_input("Data *", value=hoje_br(), format="DD/MM/YYYY")
         rcat  = r4.selectbox("Categoria", [""] + CAT_REC)
 
         st.markdown("##### 🔁 Recorrência")
@@ -33,7 +33,7 @@ def render():
         if rrecorrente:
             rusar_fim = st.checkbox("Definir data de encerramento da recorrência", key="rec_rec_fim_chk")
             if rusar_fim:
-                rrec_fim = st.date_input("Encerrar recorrência em", value=date.today(), format="DD/MM/YYYY", key="rec_rec_fim")
+                rrec_fim = st.date_input("Encerrar recorrência em", value=hoje_br(), format="DD/MM/YYYY", key="rec_rec_fim")
 
         robs  = st.text_input("Observação (opcional)")
 

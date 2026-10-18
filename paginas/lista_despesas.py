@@ -13,7 +13,7 @@ from logica.despesas import (
     sincronizar_baixas_automaticas_despesas, marcar_despesa_paga,
 )
 from logica.relatorios import gerar_pdf, Secao
-from utils.datas import seletor_mes_ano, fmt_mes_str_pt
+from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
@@ -148,7 +148,7 @@ def render():
                 try:
                     data_atual = datetime.strptime(str(registro["data"]), "%Y-%m-%d").date()
                 except Exception:
-                    data_atual = datetime.today().date()
+                    data_atual = hoje_br()
                 data_edit = ee3.date_input("Data", value=data_atual, format="DD/MM/YYYY")
                 cat_opcoes, idx_cat = opcoes_categoria(CAT_DESP, registro["categoria"])
                 cat_edit = ee4.selectbox("Categoria", cat_opcoes, index=idx_cat)

@@ -1,12 +1,12 @@
 """Aba: Lançar Despesa."""
 
-from datetime import date
 
 import streamlit as st
 
 from config import CAT_DESP, PAGAMENTOS
 from sheets.loaders import obter_nomes_cartoes
 from logica.despesas import salvar_despesa
+from utils.datas import hoje_br
 from utils.formatacao import parse_valor
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
@@ -27,7 +27,7 @@ def render():
         desc = st.text_input("Descrição *")
 
         c3, c4 = st.columns(2)
-        data_d = c3.date_input("Data *", value=date.today(), format="DD/MM/YYYY",
+        data_d = c3.date_input("Data *", value=hoje_br(), format="DD/MM/YYYY",
                                help="Se marcar como pendente mais abaixo, use aqui a data de vencimento prevista.")
         local  = c4.text_input("Local / Estabelecimento")
 
@@ -61,7 +61,7 @@ def render():
         if recorrente:
             usar_fim = st.checkbox("Definir data de encerramento da recorrência", key="desp_rec_fim_chk")
             if usar_fim:
-                rec_fim = st.date_input("Encerrar recorrência em", value=date.today(), format="DD/MM/YYYY", key="desp_rec_fim")
+                rec_fim = st.date_input("Encerrar recorrência em", value=hoje_br(), format="DD/MM/YYYY", key="desp_rec_fim")
 
         obs = st.text_input("Observação (opcional)")
         submitted = st.form_submit_button("✔ Salvar despesa", type="primary", use_container_width=True)

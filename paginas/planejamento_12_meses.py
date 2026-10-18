@@ -1,6 +1,5 @@
 """Aba: 🔮 Planejamento 12 Meses — panorama, lançamentos futuros e recorrentes."""
 
-from datetime import date
 from functools import partial
 
 import pandas as pd
@@ -18,7 +17,7 @@ from logica.planejamento import (
 )
 from logica.exportacao import gerar_excel_panorama, gerar_csv_panorama
 from logica.relatorios import gerar_pdf, Secao
-from utils.datas import proximos_12_meses, fmt_mes_str_pt
+from utils.datas import proximos_12_meses, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, parse_valor, converter_data_para_exibicao
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf
 
@@ -81,7 +80,7 @@ def _sub_panorama(meses_futuros):
     # R-02 · Exportação
     st.markdown("---")
     st.markdown("##### ⬇️ Exportar projeção")
-    nome_arquivo = f"planejamento_{date.today().strftime('%Y%m%d')}"
+    nome_arquivo = f"planejamento_{hoje_br().strftime('%Y%m%d')}"
     exp_col1, exp_col2, exp_col3 = st.columns(3)
     with exp_col1:
         try:
@@ -278,7 +277,7 @@ def _sub_lancamentos_futuros(meses_futuros):
                 kpis=[("Receitas planejadas", fmt_moeda(rec_pl), "verde"),
                       ("Despesas planejadas", fmt_moeda(desp_pl), "vermelho")],
                 secoes=[Secao("", df_pl_show.copy())]),
-        f"planejamento_lancamentos_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_lanc_futuros",
+        f"planejamento_lancamentos_{hoje_br().strftime('%Y%m%d')}.pdf", key="pdf_lanc_futuros",
     )
 
     event_pl = st.dataframe(df_pl_show, use_container_width=True, hide_index=True,
@@ -392,7 +391,7 @@ def _sub_recorrentes():
     with st.form("form_receita_recorrente_rapida", clear_on_submit=True):
         qdesc = st.text_input("Descrição * (ex: Salário)")
         qr3, qr4 = st.columns(2)
-        qdata = qr3.date_input("Início *", value=date.today(), format="DD/MM/YYYY", key="qr_data")
+        qdata = qr3.date_input("Início *", value=hoje_br(), format="DD/MM/YYYY", key="qr_data")
         qcat  = qr4.selectbox("Categoria", [""] + CAT_REC, key="qr_cat")
         qsubmit = st.form_submit_button("✔ Cadastrar receita recorrente", type="primary", use_container_width=True)
 

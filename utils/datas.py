@@ -4,7 +4,7 @@ de seleção de mês/ano usado em várias abas.
 """
 
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 import streamlit as st
@@ -33,8 +33,25 @@ def add_months(dt: date, months: int) -> date:
     return date(year, month, day)
 
 
+# Horário de Brasília com offset fixo UTC-3 (o Brasil não tem horário de verão
+# desde 2019). O servidor do Streamlit Cloud roda em UTC: `date.today()` dele
+# vira o dia seguinte entre ~21h e 24h no Brasil. Por isso TODA decisão "que dia
+# é hoje?" do app deve usar `hoje_br()` / `agora_br()`, nunca `date.today()`.
+_FUSO_BR = timezone(timedelta(hours=-3))
+
+
+def agora_br() -> datetime:
+    """Data e hora atuais em Brasília (UTC-3 fixo)."""
+    return datetime.now(_FUSO_BR)
+
+
+def hoje_br() -> date:
+    """Data de hoje em Brasília (UTC-3 fixo)."""
+    return agora_br().date()
+
+
 def hoje_str():
-    return date.today().strftime("%Y-%m-%d")
+    return hoje_br().strftime("%Y-%m-%d")
 
 
 def data_iso(v) -> str:
@@ -68,7 +85,7 @@ def data_iso(v) -> str:
 
 def seletor_mes_ano(key_prefix: str):
     """Renderiza seletores de ano e mês lado a lado de forma amigável."""
-    hoje = date.today()
+    hoje = hoje_br()
     anos = [hoje.year - i for i in range(5)]
     c1, c2 = st.columns(2)
     ano = c1.selectbox("Ano", anos, index=0, key=f"{key_prefix}_ano")
@@ -80,7 +97,7 @@ def seletor_mes_ano(key_prefix: str):
 
 def proximos_12_meses() -> list:
     """Retorna ['YYYY-MM', ...] para os 12 meses a partir do mês seguinte ao atual."""
-    hoje = date.today()
+    hoje = hoje_br()
     base = date(hoje.year, hoje.month, 1)
     return [add_months(base, i).strftime("%Y-%m") for i in range(1, 13)]
 

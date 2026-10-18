@@ -10,7 +10,7 @@ from config import CAT_REC
 from sheets.loaders import carregar_despesas, carregar_receitas
 from logica.receitas import excluir_receita, atualizar_receita
 from logica.relatorios import gerar_pdf, Secao
-from utils.datas import seletor_mes_ano, fmt_mes_str_pt
+from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
@@ -117,7 +117,7 @@ def render():
                     try:
                         data_atual = datetime.strptime(str(mov_sel["Data"]), "%Y-%m-%d").date()
                     except Exception:
-                        data_atual = datetime.today().date()
+                        data_atual = hoje_br()
                     data_edit = re2.date_input("Data", value=data_atual, format="DD/MM/YYYY")
 
                     cat_opcoes, idx_cat = opcoes_categoria(CAT_REC, mov_sel["Categoria"])

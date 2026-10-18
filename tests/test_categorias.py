@@ -10,10 +10,14 @@ continuam com o nome velho.
 from config import CAT_DESP, CAT_REC
 from utils.widgets import opcoes_categoria
 
-# Nomes que já existiam antes da ampliação das listas — não podem sumir.
-CAT_DESP_ANTIGAS = ["Alimentação", "Transporte", "Saúde", "Moradia", "Lazer",
+# Nomes que já existiam antes da ampliação das listas — não podem mudar de grafia.
+CAT_DESP_ANTIGAS = ["Alimentação", "Transporte", "Saúde", "Lazer",
                     "Educação", "Vestuário", "Despesa bancária", "Outros"]
-CAT_REC_ANTIGAS = ["Salário", "Freelance", "Investimentos", "Aluguel recebido", "Outros"]
+CAT_REC_ANTIGAS = ["Salário", "Freelance", "Investimentos", "Outros"]
+
+# Removidas de propósito na etapa 6 (lançamentos antigos mantêm o nome velho).
+CAT_DESP_REMOVIDAS = ["Moradia"]
+CAT_REC_REMOVIDAS = ["Aluguel recebido"]
 
 
 class TestListas:
@@ -21,8 +25,8 @@ class TestListas:
     def test_despesas_tem_19_categorias(self):
         assert len(CAT_DESP) == 19
 
-    def test_receitas_tem_7_categorias(self):
-        assert len(CAT_REC) == 7
+    def test_receitas_tem_6_categorias(self):
+        assert len(CAT_REC) == 6
 
     def test_sem_duplicatas(self):
         assert len(set(CAT_DESP)) == len(CAT_DESP)
@@ -35,6 +39,16 @@ class TestListas:
     def test_nomes_antigos_continuam_com_a_mesma_grafia(self):
         assert set(CAT_DESP_ANTIGAS) <= set(CAT_DESP)
         assert set(CAT_REC_ANTIGAS) <= set(CAT_REC)
+
+    def test_categorias_removidas_de_proposito_nao_estao_nas_listas(self):
+        for nome in CAT_DESP_REMOVIDAS:
+            assert nome not in CAT_DESP
+        for nome in CAT_REC_REMOVIDAS:
+            assert nome not in CAT_REC
+
+    def test_obras_vem_logo_depois_de_contas_da_casa(self):
+        assert "Obras" in CAT_DESP
+        assert CAT_DESP.index("Obras") == CAT_DESP.index("Contas da casa") + 1
 
     def test_novas_categorias_de_despesa_estao_presentes(self):
         novas = ["Restaurantes e delivery", "Contas da casa", "Assinaturas e serviços",
@@ -57,9 +71,18 @@ class TestListas:
 class TestOpcoesCategoria:
 
     def test_categoria_da_lista_vem_selecionada(self):
+        opcoes, idx = opcoes_categoria(CAT_DESP, "Obras")
+        assert opcoes[idx] == "Obras"
+        assert opcoes == [""] + CAT_DESP
+
+    def test_categoria_removida_continua_disponivel_na_edicao(self):
+        # Lançamento antigo em "Moradia": a edição não pode apagar a categoria.
         opcoes, idx = opcoes_categoria(CAT_DESP, "Moradia")
         assert opcoes[idx] == "Moradia"
-        assert opcoes == [""] + CAT_DESP
+        assert opcoes[-1] == "Moradia"
+        opcoes, idx = opcoes_categoria(CAT_REC, "Aluguel recebido")
+        assert opcoes[idx] == "Aluguel recebido"
+        assert opcoes[-1] == "Aluguel recebido"
 
     def test_categoria_vazia_seleciona_o_vazio(self):
         opcoes, idx = opcoes_categoria(CAT_DESP, "")

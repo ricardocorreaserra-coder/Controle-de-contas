@@ -23,7 +23,7 @@ import gspread
 
 from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_linha_por_nome_id_unico
 from sheets.loaders import carregar_emprestimos
-from utils.datas import add_months
+from utils.datas import add_months, hoje_br
 from utils.sessao import usuario_atual
 
 
@@ -156,7 +156,7 @@ def sincronizar_baixas_automaticas() -> list:
     if df.empty:
         return []
 
-    hoje = date.today()
+    hoje = hoje_br()
     atualizados = []
     updates = []
     cabecalho = ws.row_values(1)

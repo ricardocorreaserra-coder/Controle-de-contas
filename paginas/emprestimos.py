@@ -26,7 +26,7 @@ from logica.emprestimos import (
     sincronizar_baixas_automaticas, calcular_valor_total_devido,
 )
 from logica.relatorios import gerar_pdf, Secao
-from utils.datas import data_iso
+from utils.datas import data_iso, hoje_br
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor,
@@ -72,7 +72,7 @@ def _sub_cadastro():
             "Quantidade de parcelas restantes *", min_value=1, max_value=600, step=1, value=1
         )
         proxima_data_vencimento = e4.date_input(
-            "Data de vencimento da próxima parcela *", value=date.today(), format="DD/MM/YYYY"
+            "Data de vencimento da próxima parcela *", value=hoje_br(), format="DD/MM/YYYY"
         )
 
         submitted = st.form_submit_button("✔ Salvar Empréstimo", type="primary", use_container_width=True)
@@ -126,7 +126,7 @@ def _bloco_edicao(eid: int, registro) -> None:
         try:
             data_atual = date.fromisoformat(data_iso(registro["proxima_data_vencimento"]))
         except Exception:
-            data_atual = date.today()
+            data_atual = hoje_br()
 
         with st.form(f"form_editar_emprestimo_{eid}"):
             ee1, ee2 = st.columns(2)
@@ -203,12 +203,12 @@ def _sub_lista():
 
     botao_pdf(
         "Imprimir empréstimos (PDF)",
-        partial(gerar_pdf, "Empréstimos", f"Posição em {date.today().strftime('%d/%m/%Y')}",
+        partial(gerar_pdf, "Empréstimos", f"Posição em {hoje_br().strftime('%d/%m/%Y')}",
                 kpis=[("Total devido (todos)", fmt_moeda(total_devido), "laranja"),
                       ("Empréstimos ativos", str(ativos), "azul"),
                       ("Quitados", str(quitados), "verde")],
                 secoes=[Secao("", df_show.copy())]),
-        f"emprestimos_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_emprestimos",
+        f"emprestimos_{hoje_br().strftime('%Y%m%d')}.pdf", key="pdf_emprestimos",
     )
 
     event = st.dataframe(df_show, use_container_width=True, hide_index=True,

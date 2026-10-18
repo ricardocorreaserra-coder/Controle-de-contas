@@ -122,15 +122,10 @@ def ws(monkeypatch):
     cache = FakeCache()
     planilha.cache = cache
 
-    class DataFixa(date):
-        @classmethod
-        def today(cls):
-            return HOJE
-
     monkeypatch.setattr(emp, "get_sheet", lambda nome: planilha)
     monkeypatch.setattr(emp, "carregar_emprestimos", cache)
     monkeypatch.setattr(emp, "usuario_atual", lambda: "Jociara")
-    monkeypatch.setattr(emp, "date", DataFixa)
+    monkeypatch.setattr(emp, "hoje_br", lambda: HOJE)
     return planilha
 
 

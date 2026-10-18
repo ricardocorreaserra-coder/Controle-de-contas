@@ -20,7 +20,7 @@ from logica.fechamentos import (
     detectar_buracos_fechamentos,
 )
 from logica.relatorios import gerar_pdf, Secao, pdf_faturas_futuras
-from utils.datas import seletor_mes_ano, hoje_str, add_months, fmt_mes_str_pt, data_iso as _data_para_iso
+from utils.datas import seletor_mes_ano, hoje_str, hoje_br, add_months, fmt_mes_str_pt, data_iso as _data_para_iso
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf
 
@@ -122,7 +122,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
                       ("Vencidas", f"{venc} parcela(s)", "vermelho"),
                       ("Pagas", f"{pagas} parcela(s)", "verde")],
                 secoes=[Secao("", df_show.copy())]),
-        f"parcelas_cartao_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_parcelas",
+        f"parcelas_cartao_{hoje_br().strftime('%Y%m%d')}.pdf", key="pdf_parcelas",
     )
 
     event_p = st.dataframe(df_show, use_container_width=True, hide_index=True,
@@ -164,13 +164,13 @@ def _sub_parcelas(df_p, df_p2, hoje):
             "na aba 🗓️ Fechamentos quando esta compra foi lançada)."
         )
         venc_dt = pd.to_datetime(_data_para_iso(df_filtrado.iloc[idx_sel]["vencimento"]), errors="coerce")
-        venc_atual = date.today() if pd.isna(venc_dt) else venc_dt.date()
+        venc_atual = hoje_br() if pd.isna(venc_dt) else venc_dt.date()
         if not (2000 <= venc_atual.year <= 2100):
             st.warning(
                 "O vencimento desta parcela está inválido na planilha. "
                 "Informe a data correta abaixo e clique em Corrigir."
             )
-            venc_atual = date.today()
+            venc_atual = hoje_br()
         cc_v1, cc_v2 = st.columns([2, 1])
         novo_venc = cc_v1.date_input("Novo vencimento", value=venc_atual,
                                      min_value=date(2000, 1, 1), max_value=date(2100, 12, 31),
@@ -255,7 +255,7 @@ def _form_alterar_lancamento(row, pid_acao):
                                          step=0.01, format="%.2f", key=f"alt_valor_{pid_acao}")
             if manual:
                 nova_compra = c4.date_input("Data da compra", value=compra_atual,
-                                            min_value=date(2000, 1, 1), max_value=date.today(),
+                                            min_value=date(2000, 1, 1), max_value=hoje_br(),
                                             format="DD/MM/YYYY", key=f"alt_compra_{pid_acao}")
 
             escopo_label = st.radio(
@@ -412,7 +412,7 @@ def _sub_faturas_futuras(df_p, df_p2):
             partial(pdf_faturas_futuras, df_pend.copy(),
                     df_det_show.copy() if df_det_show is not None else None,
                     f"Detalhamento - {fmt_mes_str_pt(sel_mes_det)} ({sel_cartao_det})"),
-            f"faturas_futuras_{date.today().strftime('%Y%m%d')}.pdf", key="pdf_faturas",
+            f"faturas_futuras_{hoje_br().strftime('%Y%m%d')}.pdf", key="pdf_faturas",
         )
 
 
@@ -440,10 +440,10 @@ def _sub_lancar_historico():
 
         col_m6, col_m7 = st.columns(2)
         data_compra_m = col_m6.date_input("Data da compra (opcional)", value=None,
-                                          min_value=date(2000, 1, 1), max_value=date.today(),
+                                          min_value=date(2000, 1, 1), max_value=hoje_br(),
                                           format="DD/MM/YYYY", key="m_data_compra")
         venc_init_m = col_m7.date_input("Vencimento da próxima parcela a vencer *",
-                                        value=date.today(), format="DD/MM/YYYY", key="m_date")
+                                        value=hoje_br(), format="DD/MM/YYYY", key="m_date")
         obs_m      = st.text_input("Observação (opcional)", key="m_obs")
         sub_manual = st.form_submit_button("✔ Salvar Parcelas Históricas", type="primary", use_container_width=True)
 
@@ -617,14 +617,14 @@ def _sub_fechamentos():
         f1, f2 = st.columns(2)
         cartao_f  = f1.selectbox("Cartão", obter_nomes_cartoes(), key="fech_cartao")
         mes_ref_f = f2.text_input("Mês de referência do vencimento * (AAAA-MM)",
-                                   value=date.today().strftime("%Y-%m"), key="fech_mes")
+                                   value=hoje_br().strftime("%Y-%m"), key="fech_mes")
 
         card_info       = df_c[df_c["nome"] == cartao_f]
         dia_fech_padrao = int(card_info.iloc[0]["dia_fechamento"]) if not card_info.empty else 5
         dia_venc_padrao = int(card_info.iloc[0]["dia_vencimento"]) if not card_info.empty else 12
 
 
-        sugestao_fech, sugestao_venc = date.today(), date.today()
+        sugestao_fech, sugestao_venc = hoje_br(), hoje_br()
         if re.match(r"^\d{4}-\d{2}$", mes_ref_f or ""):
             try:
                 sugestao_fech, sugestao_venc = _sugerir_datas_fechamento(dia_fech_padrao, dia_venc_padrao, mes_ref_f)

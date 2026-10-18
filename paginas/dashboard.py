@@ -1,6 +1,5 @@
 """Aba: Dashboard — visão geral do mês selecionado."""
 
-from datetime import date
 from functools import partial
 
 import pandas as pd
@@ -11,7 +10,7 @@ import streamlit as st
 from sheets.loaders import carregar_despesas, carregar_receitas
 from logica.despesas import despesa_esta_pendente
 from logica.relatorios import pdf_dashboard
-from utils.datas import seletor_mes_ano, add_months, fmt_mes_pt, fmt_mes_str_pt
+from utils.datas import seletor_mes_ano, add_months, fmt_mes_pt, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, card_html
 from utils.widgets import botao_pdf
 
@@ -75,7 +74,7 @@ def render():
         st.subheader("Histórico 6 meses")
         hist = []
         for i in range(5, -1, -1):
-            d   = date.today()
+            d   = hoje_br()
             mm  = add_months(d, -i).strftime("%Y-%m")
             lbl = fmt_mes_pt(add_months(d, -i))
             r_val = float(df_r[df_r["data"].astype(str).str.startswith(mm)]["valor"].sum()) if not df_r.empty else 0.0
