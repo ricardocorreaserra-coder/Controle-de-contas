@@ -11,8 +11,8 @@ com descrição/cartão/total repetidos (ex.: duas assinaturas "Netflix"
 parceladas em momentos diferentes).
 
 As demais funções do módulo (salvar_parcela_manual, corrigir_total_parcelas,
-alterar_lancamento_parcela, etc.) gravam diretamente na planilha e por isso
-ficam fora do escopo destes testes.
+alterar_lancamento_parcela, etc.) gravam na planilha e são testadas em
+tests/test_parcelas_io.py, com uma planilha falsa em memória.
 """
 
 import pandas as pd

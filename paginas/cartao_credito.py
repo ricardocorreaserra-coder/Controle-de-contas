@@ -10,7 +10,7 @@ import plotly.express as px
 import streamlit as st
 
 from sheets.loaders import carregar_parcelas, carregar_despesas, carregar_cartoes, obter_nomes_cartoes
-from logica.cartoes import salvar_cartao, excluir_cartao, cartao_tem_vinculos, estimar_vencimento_parcela
+from logica.cartoes import salvar_cartao, excluir_cartao, cartao_tem_vinculos
 from logica.parcelas import (
     salvar_parcela_manual, atualizar_parcela, baixar_fatura_mes, atualizar_vencimento_parcela,
     alterar_lancamento_parcela, resumo_compra_parcelas, excluir_compra_parcelas, corrigir_total_parcelas,
@@ -472,11 +472,9 @@ def _sub_lancar_historico():
                     salvar_parcela_manual(card_m, desc_m.strip(), v_p, parc_init_m, parc_total_m,
                                           venc_init_m.strftime("%Y-%m-%d"), obs_m.strip(),
                                           data_compra_m.strftime("%Y-%m-%d") if data_compra_m else None)
-                    st.session_state["salvando_parcela"] = False
                     concluir_com_sucesso(f"Parcelas históricas do item '{desc_m}' cadastradas com sucesso!",
                                          campo_valor_base_key="m_val")
                 except Exception as e:
-                    st.session_state["salvando_parcela"] = False
                     st.error(f"Erro ao salvar parcelas: {e}")
                 finally:
                     st.session_state["salvando_parcela"] = False
