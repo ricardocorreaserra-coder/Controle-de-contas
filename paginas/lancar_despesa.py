@@ -23,48 +23,62 @@ def render():
     with c_valor:
         valor = campo_valor_moeda("Valor (R$) *", base_key="desp_valor")
 
-    with st.form("form_despesa", clear_on_submit=True):
-        desc = st.text_input("Descrição *")
+    # SEM st.form de propósito: dentro de um formulário o Streamlit só atualiza
+    # a tela no envio. Com "Modo de pagamento" dentro dele, os campos do cartão
+    # (e os de status/recorrência) não apareciam ao escolher a opção — só depois
+    # de Salvar, que então gravava com os valores padrão (1º cartão, 1 parcela).
+    # Fora do form, cada escolha atualiza a tela na hora.
+    #
+    # Para "limpar a tela" depois de salvar (o que o clear_on_submit fazia), as
+    # chaves dos campos levam um contador; ao salvar o contador sobe e todos os
+    # campos voltam ao estado inicial.
+    n = st.session_state.get("desp_form_n", 0)
+    k = lambda nome: f"desp_{nome}_{n}"
 
-        c3, c4 = st.columns(2)
-        data_d = c3.date_input("Data *", value=hoje_br(), format="DD/MM/YYYY",
-                               help="Se marcar como pendente mais abaixo, use aqui a data de vencimento prevista.")
-        local  = c4.text_input("Local / Estabelecimento")
+    desc = st.text_input("Descrição *", key=k("desc"))
 
-        c5, c6 = st.columns(2)
-        cat = c5.selectbox("Categoria", [""] + CAT_DESP)
-        pag = c6.selectbox("Modo de pagamento *", [""] + PAGAMENTOS)
+    c3, c4 = st.columns(2)
+    data_d = c3.date_input("Data *", value=hoje_br(), format="DD/MM/YYYY", key=k("data"),
+                           help="Se marcar como pendente mais abaixo, use aqui a data de vencimento prevista.")
+    local  = c4.text_input("Local / Estabelecimento", key=k("local"))
 
-        cartao = None; n_parc = 1
-        if pag == "Cartão de crédito":
-            st.markdown("##### 💳 Cartão de Crédito")
-            cc1, cc2 = st.columns(2)
-            cartao = cc1.selectbox("Cartão", obter_nomes_cartoes())
-            n_parc = cc2.number_input("Parcelas", min_value=1, max_value=60, value=1, step=1)
+    c5, c6 = st.columns(2)
+    cat = c5.selectbox("Categoria", [""] + CAT_DESP, key=k("cat"))
+    pag = c6.selectbox("Modo de pagamento *", [""] + PAGAMENTOS, key=k("pag"))
 
-        pendente = False
-        if pag and pag != "Cartão de crédito":
-            st.markdown("##### 📌 Status")
-            pendente = st.checkbox(
-                "Despesa pendente (ainda não debitou — ex.: conta de luz programada)",
-                key="desp_pendente",
-                help="Fica fora do saldo do Dashboard até a data chegar (baixa automática) "
-                     "ou você marcar como paga manualmente."
-            )
+    cartao = None; n_parc = 1
+    if pag == "Cartão de crédito":
+        st.markdown("##### 💳 Cartão de Crédito")
+        cc1, cc2 = st.columns(2)
+        cartao = cc1.selectbox("Cartão", obter_nomes_cartoes(), key=k("cartao"))
+        n_parc = cc2.number_input("Parcelas", min_value=1, max_value=60, value=1, step=1,
+                                  key=k("parcelas"))
 
-        st.markdown("##### 🔁 Recorrência")
-        recorrente = st.checkbox("Despesa recorrente (mensal)", key="desp_recorrente")
-        if recorrente and pag == "Cartão de crédito":
-            st.warning("Compras no cartão já geram parcelas automáticas. "
-                       "Use recorrente para débito, Pix, vale alimentação etc.")
-        rec_fim = None
-        if recorrente:
-            usar_fim = st.checkbox("Definir data de encerramento da recorrência", key="desp_rec_fim_chk")
-            if usar_fim:
-                rec_fim = st.date_input("Encerrar recorrência em", value=hoje_br(), format="DD/MM/YYYY", key="desp_rec_fim")
+    pendente = False
+    if pag and pag != "Cartão de crédito":
+        st.markdown("##### 📌 Status")
+        pendente = st.checkbox(
+            "Despesa pendente (ainda não debitou — ex.: conta de luz programada)",
+            key=k("pendente"),
+            help="Fica fora do saldo do Dashboard até a data chegar (baixa automática) "
+                 "ou você marcar como paga manualmente."
+        )
 
-        obs = st.text_input("Observação (opcional)")
-        submitted = st.form_submit_button("✔ Salvar despesa", type="primary", use_container_width=True)
+    st.markdown("##### 🔁 Recorrência")
+    recorrente = st.checkbox("Despesa recorrente (mensal)", key=k("recorrente"))
+    if recorrente and pag == "Cartão de crédito":
+        st.warning("Compras no cartão já geram parcelas automáticas. "
+                   "Use recorrente para débito, Pix, vale alimentação etc.")
+    rec_fim = None
+    if recorrente:
+        usar_fim = st.checkbox("Definir data de encerramento da recorrência", key=k("rec_fim_chk"))
+        if usar_fim:
+            rec_fim = st.date_input("Encerrar recorrência em", value=hoje_br(),
+                                    format="DD/MM/YYYY", key=k("rec_fim"))
+
+    obs = st.text_input("Observação (opcional)", key=k("obs"))
+    submitted = st.button("✔ Salvar despesa", type="primary", use_container_width=True,
+                          key=k("salvar"))
 
     if submitted:
         erros = []
@@ -79,6 +93,8 @@ def render():
             v = 0
         if not pag:
             erros.append("Selecione o modo de pagamento.")
+        if pag == "Cartão de crédito" and not cartao:
+            erros.append("Selecione o cartão.")
 
         if erros:
             for e in erros: st.error(e)
@@ -92,6 +108,7 @@ def render():
                                    local.strip(), pag, cat, cartao, n_parc, obs.strip(),
                                    recorrente=recorrente, recorrencia_fim=rec_fim,
                                    pendente=pendente)
+                    st.session_state["desp_form_n"] = n + 1   # campos voltam ao estado inicial
                     concluir_com_sucesso("✅ Despesa lançada com sucesso!", campo_valor_base_key="desp_valor")
                 except Exception as e:
                     st.error(f"Erro ao salvar despesa: {e}")
