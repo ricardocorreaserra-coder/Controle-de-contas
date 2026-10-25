@@ -62,39 +62,88 @@ def limpar_campo_valor(base_key: str):
     st.session_state[f"_v__{base_key}"] = st.session_state.get(f"_v__{base_key}", 0) + 1
 
 
-def concluir_com_sucesso(mensagem: str, campo_valor_base_key=None):
+# ── Avisos de confirmação das movimentações (lançar / alterar / excluir) ──────
+#
+# Toda gravação termina com `st.rerun()`. Um `st.success()` chamado ANTES do
+# rerun nunca chega a ser exibido (o rerun interrompe o envio da tela). Por isso
+# o aviso é AGENDADO em session_state e exibido na execução seguinte, de dois
+# jeitos ao mesmo tempo:
+#
+#   1. Aviso flutuante (`st.toast`), mostrado por `exibir_toasts_pendentes()`
+#      UMA vez em app.py: aparece no canto da tela, em qualquer página ou aba, e
+#      mesmo que a pessoa esteja com a tela rolada lá embaixo (onde ficam os
+#      botões de editar/excluir).
+#   2. Quadro de confirmação (`st.success`/`st.warning`) no topo da aba onde a
+#      ação foi feita, mostrado por `exibir_mensagem_pendente(chave)`, que fica
+#      na tela até a próxima interação.
+#
+# `chave` identifica ONDE o quadro aparece. Telas com abas (st.tabs) executam o
+# corpo de todas as abas a cada rodada; com a chave genérica, a mensagem é
+# consumida pela primeira aba que a lê — que pode não ser a aba da ação. Nessas
+# telas, cada aba usa a sua própria chave.
+
+CHAVE_AVISO = "_msg_sucesso_pendente"
+_FILA_TOASTS = "_toasts_pendentes"
+
+# tipo -> (ícone, função de exibição do quadro)
+_TIPOS_AVISO = {
+    "sucesso":  ("✅", "success"),
+    "excluido": ("🗑️", "success"),
+    "aviso":    ("⚠️", "warning"),
+}
+
+
+def avisar(mensagem: str, chave: str = CHAVE_AVISO, tipo: str = "sucesso"):
+    """Agenda a confirmação de uma movimentação para a PRÓXIMA execução do
+    script. Não faz rerun: o chamador faz `st.rerun()` em seguida (ou usa
+    `concluir_com_sucesso`).
+
+    `tipo`: "sucesso" (lançou/alterou), "excluido" (excluiu) ou "aviso"
+    (ex.: estorno, ou ação que não encontrou nada para fazer).
     """
-    Agenda a exibição de uma mensagem de sucesso para a PRÓXIMA execução
-    do script e, opcionalmente, agenda a limpeza de um ou mais campos de
-    valor monetário criados fora de um st.form via `campo_valor_moeda`.
-    Termina chamando st.rerun().
+    if tipo not in _TIPOS_AVISO:
+        tipo = "sucesso"
+    st.session_state[chave] = (tipo, mensagem)
+    st.session_state.setdefault(_FILA_TOASTS, []).append((tipo, mensagem))
+
+
+def concluir_com_sucesso(mensagem: str, campo_valor_base_key=None,
+                         chave: str = CHAVE_AVISO, tipo: str = "sucesso"):
+    """
+    Agenda a confirmação (ver `avisar`) e, opcionalmente, a limpeza de um ou
+    mais campos de valor monetário criados fora de um st.form via
+    `campo_valor_moeda`. Termina chamando st.rerun().
 
     `campo_valor_base_key` aceita None, uma string única, ou uma lista de
     strings — útil em telas com mais de um campo de valor (ex.: a tela de
     Empréstimos, que tem "Valor da Parcela" e "Valor Total do Débito").
-
-    Por que agendar em vez de só chamar st.success() direto: como esta
-    função sempre termina com st.rerun(), qualquer st.success() chamado
-    ANTES dele na mesma execução nunca chegaria a ser exibido — o rerun
-    interrompe o envio da tela para o navegador. Guardando a mensagem em
-    session_state, ela é exibida (por `exibir_mensagem_pendente`) já na
-    execução seguinte, junto com o(s) campo(s) de valor mostrando-se vazios.
     """
-    st.session_state["_msg_sucesso_pendente"] = mensagem
+    avisar(mensagem, chave=chave, tipo=tipo)
     if campo_valor_base_key:
         chaves = [campo_valor_base_key] if isinstance(campo_valor_base_key, str) else campo_valor_base_key
-        for chave in chaves:
-            limpar_campo_valor(chave)
+        for k in chaves:
+            limpar_campo_valor(k)
     st.rerun()
 
 
-def exibir_mensagem_pendente():
-    """Chame uma vez, no topo da função de uma página — exibe (e
-    descarta) qualquer mensagem de sucesso agendada por
-    `concluir_com_sucesso`."""
-    msg = st.session_state.pop("_msg_sucesso_pendente", None)
-    if msg:
-        st.success(msg)
+def exibir_mensagem_pendente(chave: str = CHAVE_AVISO):
+    """Mostra (e descarta) o quadro de confirmação agendado em `chave`.
+    Chame uma vez, no topo da aba/função onde a ação acontece."""
+    item = st.session_state.pop(chave, None)
+    if not item:
+        return
+    # Compatibilidade: texto simples (formato antigo) conta como sucesso.
+    tipo, msg = ("sucesso", item) if isinstance(item, str) else item
+    icone, exibir = _TIPOS_AVISO.get(tipo, _TIPOS_AVISO["sucesso"])
+    getattr(st, exibir)(msg, icon=icone)
+
+
+def exibir_toasts_pendentes():
+    """Mostra os avisos flutuantes agendados por `avisar`. Chamada UMA vez por
+    execução, em app.py, antes de desenhar a página."""
+    for tipo, msg in st.session_state.pop(_FILA_TOASTS, []):
+        icone, _ = _TIPOS_AVISO.get(tipo, _TIPOS_AVISO["sucesso"])
+        st.toast(msg, icon=icone, duration="long")
 
 
 def opcoes_categoria(categorias, cat_atual):

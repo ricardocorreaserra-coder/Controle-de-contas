@@ -6,7 +6,7 @@ import streamlit as st
 from config import CAT_REC
 from logica.receitas import salvar_receita
 from utils.datas import hoje_br
-from utils.formatacao import parse_valor
+from utils.formatacao import parse_valor, fmt_moeda
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
@@ -61,7 +61,8 @@ def render():
                 try:
                     salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip(),
                                    recorrente=rrecorrente, recorrencia_fim=rrec_fim)
-                    concluir_com_sucesso("✅ Receita lançada com sucesso!", campo_valor_base_key="rec_valor")
+                    concluir_com_sucesso(f"Receita lançada: {rdesc.strip()} — {fmt_moeda(rv)}",
+                                         campo_valor_base_key="rec_valor")
                 except Exception as e:
                     st.error(f"Erro ao salvar receita: {e}")
                 finally:

@@ -7,7 +7,7 @@ from config import CAT_DESP, PAGAMENTOS
 from sheets.loaders import obter_nomes_cartoes
 from logica.despesas import salvar_despesa
 from utils.datas import hoje_br
-from utils.formatacao import parse_valor
+from utils.formatacao import parse_valor, fmt_moeda
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
@@ -109,7 +109,12 @@ def render():
                                    recorrente=recorrente, recorrencia_fim=rec_fim,
                                    pendente=pendente)
                     st.session_state["desp_form_n"] = n + 1   # campos voltam ao estado inicial
-                    concluir_com_sucesso("✅ Despesa lançada com sucesso!", campo_valor_base_key="desp_valor")
+                    if pag == "Cartão de crédito":
+                        detalhe = f"{fmt_moeda(v)} no cartão {cartao} em {n_parc}x"
+                    else:
+                        detalhe = f"{fmt_moeda(v)} ({pag}{', pendente' if pendente else ''})"
+                    concluir_com_sucesso(f"Despesa lançada: {desc.strip()} — {detalhe}",
+                                         campo_valor_base_key="desp_valor")
                 except Exception as e:
                     st.error(f"Erro ao salvar despesa: {e}")
                 finally:

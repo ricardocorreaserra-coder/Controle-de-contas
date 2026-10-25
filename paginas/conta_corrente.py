@@ -14,6 +14,7 @@ from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
+    avisar,
 )
 
 
@@ -145,7 +146,8 @@ def render():
                         try:
                             atualizar_receita(id_sel, desc_edit.strip(), v_edit,
                                               data_edit.strftime("%Y-%m-%d"), cat_edit, obs_edit.strip())
-                            concluir_com_sucesso(f"✅ Receita #{id_sel} atualizada com sucesso!")
+                            concluir_com_sucesso(f"Receita #{id_sel} atualizada: "
+                                                 f"{desc_edit.strip()} — {fmt_moeda(v_edit)}")
                         except Exception as e:
                             st.error(f"Erro ao atualizar: {e}")
 
@@ -159,7 +161,7 @@ def render():
                 if st.button("🗑 Excluir receita", type="primary", use_container_width=True, key="btn_excl_rec"):
                     try:
                         excluir_receita(id_sel)
-                        st.success(f"Receita #{id_sel} excluída!")
+                        avisar(f"Receita #{id_sel} excluída: {desc_sel} ({val_sel})", tipo="excluido")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao excluir: {e}")

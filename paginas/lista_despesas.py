@@ -17,6 +17,7 @@ from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
+    avisar,
 )
 
 
@@ -28,6 +29,7 @@ def render():
     if baixadas:
         nomes = ", ".join(f"{b['descricao']} ({fmt_moeda(b['valor'])})" for b in baixadas)
         st.success(f"✅ Baixa automática: {nomes}")
+        st.toast(f"Baixa automática: {nomes}", icon="✅", duration="long")
 
     st.markdown("##### Filtros de visualização")
     fmes = seletor_mes_ano("lista")
@@ -55,8 +57,13 @@ def render():
                 venc_fmt = converter_data_para_exibicao(p["data"])
                 pc1.write(f"**{p['descricao']}** — {fmt_moeda(p['valor'])} — vence {venc_fmt}")
                 if pc2.button("Marcar paga", key=f"pagar_{int(p['id'])}"):
-                    marcar_despesa_paga(int(p["id"]))
-                    st.rerun()
+                    try:
+                        marcar_despesa_paga(int(p["id"]))
+                        avisar(f"Despesa #{int(p['id'])} marcada como paga: "
+                               f"{p['descricao']} — {fmt_moeda(p['valor'])}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao marcar como paga: {e}")
             st.markdown("<br>", unsafe_allow_html=True)
 
     mask = df_d["data"].astype(str).str.startswith(fmes)
@@ -176,7 +183,8 @@ def render():
                         atualizar_despesa(id_excluir, desc_edit.strip(), v_edit,
                                           data_edit.strftime("%Y-%m-%d"), local_edit.strip(),
                                           cat_edit, obs_edit.strip())
-                        concluir_com_sucesso(f"✅ Despesa #{id_excluir} atualizada com sucesso!")
+                        concluir_com_sucesso(f"Despesa #{id_excluir} atualizada: "
+                                             f"{desc_edit.strip()} — {fmt_moeda(v_edit)}")
                     except Exception as e:
                         st.error(f"Erro ao atualizar: {e}")
 
@@ -192,7 +200,8 @@ def render():
             if st.button("🗑 Excluir despesa", type="primary", use_container_width=True, key="btn_excl_desp"):
                 try:
                     excluir_despesa(id_excluir)
-                    st.success(f"Despesa #{id_excluir} excluída com sucesso!")
+                    avisar(f"Despesa #{id_excluir} excluída: {desc_excluir} ({val_excluir})",
+                           tipo="excluido")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao excluir: {e}")

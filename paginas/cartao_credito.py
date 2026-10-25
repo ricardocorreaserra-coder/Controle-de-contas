@@ -22,7 +22,14 @@ from logica.fechamentos import (
 from logica.relatorios import gerar_pdf, Secao, pdf_faturas_futuras
 from utils.datas import seletor_mes_ano, hoje_str, hoje_br, add_months, fmt_mes_str_pt, data_iso as _data_para_iso
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf, avisar
+
+# Cada aba tem a sua chave de confirmação. A tela executa o corpo de TODAS as abas
+# a cada rodada, e a chave genérica é consumida pela primeira aba que a lê (a de
+# "Lançar Histórico") — a mensagem apareceria na aba errada.
+_MSG_PARCELAS    = "_msg_alt_parcela"       # aba Parcelas
+_MSG_FECHAMENTOS = "_msg_fechamentos"       # aba Fechamentos
+_MSG_CARTOES     = "_msg_cartoes"           # aba Cartões & Configurações
 
 
 def _preparar_df_parcelas(df_p: pd.DataFrame, df_d: pd.DataFrame) -> pd.DataFrame:
@@ -52,9 +59,7 @@ def _preparar_df_parcelas(df_p: pd.DataFrame, df_d: pd.DataFrame) -> pd.DataFram
 
 def _sub_parcelas(df_p, df_p2, hoje):
     st.subheader("Cartão de Crédito — Parcelas")
-    msg_alt = st.session_state.pop("_msg_alt_parcela", None)
-    if msg_alt:
-        st.success(msg_alt)
+    exibir_mensagem_pendente(_MSG_PARCELAS)
     if df_p.empty or df_p2.empty:
         st.info("Nenhuma parcela cadastrada.")
         return
@@ -145,14 +150,15 @@ def _sub_parcelas(df_p, df_p2, hoje):
         if ba2.button("✔ Dar baixa (Marcar como Pago)", type="primary", use_container_width=True, key="btn_pago_p"):
             try:
                 atualizar_parcela(pid_acao, "pago")
-                st.success(f"Parcela #{pid_acao} marcada como paga!")
+                avisar(f"Parcela #{pid_acao} marcada como paga: {desc_p} ({val_p})", chave=_MSG_PARCELAS)
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro: {e}")
         if ba3.button("↩ Estornar (Voltar para Pendente)", use_container_width=True, key="btn_pendente_p"):
             try:
                 atualizar_parcela(pid_acao, "pendente")
-                st.warning(f"Parcela #{pid_acao} estornada para pendente.")
+                avisar(f"Parcela #{pid_acao} estornada para pendente: {desc_p} ({val_p})",
+                       chave=_MSG_PARCELAS, tipo="aviso")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro: {e}")
@@ -179,7 +185,8 @@ def _sub_parcelas(df_p, df_p2, hoje):
         if cc_v2.button("Corrigir", use_container_width=True, key="btn_corrigir_venc"):
             try:
                 atualizar_vencimento_parcela(pid_acao, novo_venc)
-                st.success(f"Vencimento da parcela #{pid_acao} corrigido para {novo_venc.strftime('%d/%m/%Y')}.")
+                avisar(f"Vencimento da parcela #{pid_acao} corrigido para {novo_venc.strftime('%d/%m/%Y')}: "
+                       f"{desc_p} ({val_p})", chave=_MSG_PARCELAS)
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao corrigir vencimento: {e}")
@@ -214,7 +221,12 @@ def _sub_parcelas(df_p, df_p2, hoje):
     if btn_baixa_lote and confirmar_fat:
         try:
             n = baixar_fatura_mes(mes_fat, fc_cartao if fc_cartao != "Todos" else None)
-            st.success(f"Sucesso! {n} parcela(s) baixadas para {mes_fat}!")
+            if n:
+                avisar(f"Fatura de {fmt_mes_str_pt(mes_fat)} ({cartao_label}): {n} parcela(s) baixada(s).",
+                       chave=_MSG_PARCELAS)
+            else:
+                avisar(f"Nenhuma parcela pendente em {fmt_mes_str_pt(mes_fat)} ({cartao_label}): "
+                       "nada foi baixado.", chave=_MSG_PARCELAS, tipo="aviso")
             st.rerun()
         except Exception as e:
             st.error(f"Erro ao baixar fatura: {e}")
@@ -278,7 +290,8 @@ def _form_alterar_lancamento(row, pid_acao):
                     data_compra=nova_compra.strftime("%Y-%m-%d") if (manual and nova_compra) else None,
                     escopo=escopo,
                 )
-                st.session_state["_msg_alt_parcela"] = f"Lançamento alterado com sucesso ({n} parcela(s) atualizada(s))."
+                avisar(f"Lançamento alterado: parcela #{pid_acao} ({n} parcela(s) atualizada(s)).",
+                       chave=_MSG_PARCELAS)
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -323,9 +336,9 @@ def _form_gerenciar_compra(df_p, pid_acao):
             try:
                 removidas, criadas = corrigir_total_parcelas(pid_acao, novo_total)
                 st.session_state["_ver_df_parcelas"] = st.session_state.get("_ver_df_parcelas", 0) + 1
-                st.session_state["_msg_alt_parcela"] = (
-                    f"Total corrigido para {novo_total} parcela(s): {removidas} removida(s), {criadas} criada(s)."
-                )
+                avisar(
+                    f"Total corrigido para {novo_total} parcela(s): {removidas} removida(s), {criadas} criada(s).",
+                    chave=_MSG_PARCELAS)
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -345,7 +358,8 @@ def _form_gerenciar_compra(df_p, pid_acao):
             try:
                 n = excluir_compra_parcelas(pid_acao)
                 st.session_state["_ver_df_parcelas"] = st.session_state.get("_ver_df_parcelas", 0) + 1
-                st.session_state["_msg_alt_parcela"] = f"Compra '{resumo['descricao']}' excluída ({n} parcela(s))."
+                avisar(f"Compra '{resumo['descricao']}' excluída ({n} parcela(s)).",
+                       chave=_MSG_PARCELAS, tipo="excluido")
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
@@ -482,7 +496,7 @@ def _sub_lancar_historico():
 
 def _sub_configuracoes():
     st.subheader("Gerenciamento de Cartões")
-    exibir_mensagem_pendente()
+    exibir_mensagem_pendente(_MSG_CARTOES)
     st.markdown("##### Cartões Cadastrados")
     df_c = carregar_cartoes()
     if df_c.empty:
@@ -531,7 +545,7 @@ def _sub_configuracoes():
                             excluir_cartao(id_cartao)
                             # Troca a key da tabela para limpar a seleção guardada
                             st.session_state["_ver_df_cartoes"] = st.session_state.get("_ver_df_cartoes", 0) + 1
-                            st.success(f"Cartão '{nome_cartao}' excluído com sucesso!")
+                            avisar(f"Cartão '{nome_cartao}' excluído.", chave=_MSG_CARTOES, tipo="excluido")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao excluir cartão: {e}")
@@ -570,8 +584,8 @@ def _sub_configuracoes():
         else:
             try:
                 salvar_cartao(nome_nc.strip(), lim, fechamento_nc, vencimento_nc)
-                concluir_com_sucesso(f"Novo cartão '{nome_nc}' cadastrado com sucesso!",
-                                     campo_valor_base_key="nc_limit")
+                concluir_com_sucesso(f"Novo cartão cadastrado: {nome_nc.strip()} (limite {fmt_moeda(lim)})",
+                                     campo_valor_base_key="nc_limit", chave=_MSG_CARTOES)
             except Exception as e:
                 st.error(f"Erro ao cadastrar cartão: {e}")
 
@@ -597,6 +611,7 @@ def _sugerir_datas_fechamento(dia_fechamento: int, dia_vencimento: int, mes_refe
 
 def _sub_fechamentos():
     st.subheader("Fechamentos Reais de Fatura")
+    exibir_mensagem_pendente(_MSG_FECHAMENTOS)
     st.markdown(
         "A data de fechamento de uma fatura pode variar de mês para mês "
         "(fins de semana, feriados, ajustes do banco). Registre aqui o "
@@ -650,7 +665,7 @@ def _sub_fechamentos():
         else:
             try:
                 salvar_fechamento(cartao_f, mes_ref_f, data_fech_f, data_venc_f, obs_f.strip())
-                st.success(f"Fechamento de {cartao_f} para {mes_ref_f} registrado com sucesso!")
+                avisar(f"Fechamento registrado: {cartao_f}, mês {mes_ref_f}.", chave=_MSG_FECHAMENTOS)
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao registrar fechamento: {e}")
@@ -698,7 +713,8 @@ def _sub_fechamentos():
     df_fech_show.columns = ["ID", "Cartão", "Mês Ref.", "Fechamento", "Vencimento", "Obs"][:len(cols)]
 
     event_f = st.dataframe(df_fech_show, use_container_width=True, hide_index=True,
-                           on_select="rerun", selection_mode="single-row", key="df_fechamentos_list")
+                           on_select="rerun", selection_mode="single-row",
+                           key=f"df_fechamentos_list_{st.session_state.get('_ver_df_fechamentos', 0)}")
     rows_f = [i for i in event_f.selection.rows if 0 <= i < len(registros)]
     if rows_f:
         idx_sel = rows_f[0]
@@ -706,7 +722,11 @@ def _sub_fechamentos():
         if st.button("🗑 Excluir este fechamento", type="primary", use_container_width=True, key="btn_excl_fech"):
             try:
                 excluir_fechamento(id_f)
-                st.success(f"Fechamento #{id_f} excluído.")
+                # Troca a key da tabela para limpar a seleção guardada.
+                st.session_state["_ver_df_fechamentos"] = st.session_state.get("_ver_df_fechamentos", 0) + 1
+                avisar(f"Fechamento #{id_f} excluído: {registros[idx_sel]['cartao']}, "
+                       f"mês {registros[idx_sel]['mes_referencia']}.",
+                       chave=_MSG_FECHAMENTOS, tipo="excluido")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao excluir: {e}")

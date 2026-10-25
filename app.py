@@ -13,6 +13,7 @@ import streamlit as st
 from config import CSS
 from auth import verificar_autenticacao
 from utils.sessao import usuario_atual, USUARIO_PADRAO
+from utils.widgets import exibir_toasts_pendentes
 from paginas import (
     dashboard,
     lancar_despesa,
@@ -80,4 +81,8 @@ PAGINAS = {
 
 st.sidebar.markdown("### 💰 Controle de Contas")
 pagina_escolhida = st.sidebar.radio("Navegação", list(PAGINAS.keys()), label_visibility="collapsed")
+# Avisos flutuantes das movimentações feitas na execução anterior (lançar/alterar/
+# excluir) — aparecem em qualquer página, mesmo com a tela rolada.
+exibir_toasts_pendentes()
+
 PAGINAS[pagina_escolhida].render()

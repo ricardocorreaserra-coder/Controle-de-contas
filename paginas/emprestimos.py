@@ -29,13 +29,14 @@ from logica.relatorios import gerar_pdf, Secao
 from utils.datas import data_iso, hoje_br
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
 from utils.widgets import (
-    campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor,
+    campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor, avisar,
     botao_pdf,
 )
 
-# Mensagem de sucesso da EDIÇÃO. Fica numa chave própria (e não na genérica de
-# `concluir_com_sucesso`) porque esta é consumida pela sub-aba de cadastro,
-# que é desenhada antes — a mensagem apareceria na aba errada.
+# Confirmações da aba "Meus Empréstimos" (editar e excluir). Ficam numa chave
+# própria (e não na genérica de `concluir_com_sucesso`) porque esta é consumida
+# pela sub-aba de cadastro, que é desenhada antes — a mensagem apareceria na
+# aba errada.
 _CHAVE_MSG_EDICAO = "_msg_emprestimo_editado"
 
 
@@ -97,7 +98,7 @@ def _sub_cadastro():
                                   int(parcelas_restantes), proxima_data_vencimento)
                 valor_total_preview = calcular_valor_total_devido(valor_parcela, parcelas_restantes)
                 concluir_com_sucesso(
-                    f"✅ Empréstimo '{descricao}' cadastrado com sucesso! "
+                    f"Empréstimo '{descricao.strip()}' cadastrado. "
                     f"Valor total do débito: {fmt_moeda(valor_total_preview)}.",
                     campo_valor_base_key="emp_valor_parcela",
                 )
@@ -165,7 +166,8 @@ def _bloco_edicao(eid: int, registro) -> None:
                     atualizar_emprestimo(eid, desc_edit.strip(), banco_edit.strip(),
                                          float(valor_edit), int(parcelas_edit), venc_edit)
                     limpar_campo_valor(f"emp_edit_valor_{eid}")
-                    st.session_state[_CHAVE_MSG_EDICAO] = f"✅ Empréstimo #{eid} atualizado com sucesso!"
+                    avisar(f"Empréstimo #{eid} atualizado: {desc_edit.strip()} ({banco_edit.strip()})",
+                           chave=_CHAVE_MSG_EDICAO)
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao atualizar: {e}")
@@ -173,9 +175,7 @@ def _bloco_edicao(eid: int, registro) -> None:
 
 def _sub_lista():
     st.subheader("Meus Empréstimos")
-    msg_edicao = st.session_state.pop(_CHAVE_MSG_EDICAO, None)
-    if msg_edicao:
-        st.success(msg_edicao)
+    exibir_mensagem_pendente(_CHAVE_MSG_EDICAO)
     df_e = carregar_emprestimos()
     if df_e.empty:
         st.info("Nenhum empréstimo cadastrado ainda.")
@@ -212,7 +212,8 @@ def _sub_lista():
     )
 
     event = st.dataframe(df_show, use_container_width=True, hide_index=True,
-                         on_select="rerun", selection_mode="single-row", key="df_emprestimos_list")
+                         on_select="rerun", selection_mode="single-row",
+                         key=f"df_emprestimos_list_{st.session_state.get('_ver_df_emprestimos', 0)}")
 
     st.markdown("#### Ações")
     rows_emp = [i for i in event.selection.rows if 0 <= i < len(df)]
@@ -252,7 +253,11 @@ def _sub_lista():
                      use_container_width=True, key="btn_excl_emp"):
             try:
                 excluir_emprestimo(eid)
-                st.success(f"Empréstimo #{eid} excluído.")
+                # Troca a key da tabela para limpar a seleção guardada (senão o
+                # item seguinte ficaria "selecionado" no lugar do excluído).
+                st.session_state["_ver_df_emprestimos"] = st.session_state.get("_ver_df_emprestimos", 0) + 1
+                avisar(f"Empréstimo #{eid} excluído: {desc_sel} ({banco_sel})",
+                       chave=_CHAVE_MSG_EDICAO, tipo="excluido")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao excluir: {e}")
@@ -269,6 +274,11 @@ def render():
         st.info(
             f"🔄 **{item['descricao']}** ({item['banco']}): {item['parcelas_baixadas']} "
             f"parcela(s) baixada(s) automaticamente. Restam {item['parcelas_restantes']}."
+        )
+        st.toast(
+            f"Baixa automática: {item['descricao']} ({item['banco']}) — "
+            f"{item['parcelas_baixadas']} parcela(s) baixada(s). Restam {item['parcelas_restantes']}.",
+            icon="🔄", duration="long",
         )
 
     st.markdown(

@@ -19,7 +19,11 @@ from logica.exportacao import gerar_excel_panorama, gerar_csv_panorama
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import proximos_12_meses, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, parse_valor, converter_data_para_exibicao
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf
+from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf, avisar
+
+# A aba "Recorrentes" tem chave própria de confirmação: a chave genérica é lida
+# antes, na aba "Lançamentos Futuros", e a mensagem apareceria na aba errada.
+_CHAVE_MSG_RECORRENTES = "_msg_plan_recorrentes"
 
 
 def _sub_panorama(meses_futuros):
@@ -194,7 +198,7 @@ def _bloco_edicao_planejamento(registro, meses_futuros) -> None:
                     atualizar_planejamento(id_pl, desc_edit.strip(), float(v_edit), mes_edit,
                                            cat_edit, obs_edit.strip())
                     invalidar_cache_panorama()
-                    concluir_com_sucesso(f"✅ Item de planejamento #{id_pl} atualizado com sucesso!",
+                    concluir_com_sucesso(f"Item de planejamento #{id_pl} atualizado: {desc_edit.strip()}",
                                          campo_valor_base_key=f"pl_edit_valor_{id_pl}")
                 except Exception as e:
                     st.error(f"Erro ao atualizar: {e}")
@@ -281,7 +285,8 @@ def _sub_lancamentos_futuros(meses_futuros):
     )
 
     event_pl = st.dataframe(df_pl_show, use_container_width=True, hide_index=True,
-                            on_select="rerun", selection_mode="single-row", key="df_planejamento_list")
+                            on_select="rerun", selection_mode="single-row",
+                            key=f"df_planejamento_list_{st.session_state.get('_ver_df_planejamento', 0)}")
     rows_pl = [i for i in event_pl.selection.rows if 0 <= i < len(df_pl_list)]
     if rows_pl:
         idx_sel = rows_pl[0]
@@ -296,7 +301,9 @@ def _sub_lancamentos_futuros(meses_futuros):
                 try:
                     excluir_planejamento(id_pl)
                     invalidar_cache_panorama()
-                    st.success(f"Item #{id_pl} excluído!")
+                    # Troca a key da tabela para limpar a seleção guardada.
+                    st.session_state["_ver_df_planejamento"] = st.session_state.get("_ver_df_planejamento", 0) + 1
+                    avisar(f"Item de planejamento #{id_pl} excluído: {desc_pl_sel}", tipo="excluido")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao excluir: {e}")
@@ -309,6 +316,7 @@ def _sub_lancamentos_futuros(meses_futuros):
 
 def _sub_recorrentes():
     st.subheader("Despesas e Receitas Recorrentes")
+    exibir_mensagem_pendente(_CHAVE_MSG_RECORRENTES)
 
     df_d_rec = carregar_despesas()
     df_r_rec = carregar_receitas()
@@ -341,7 +349,8 @@ def _sub_recorrentes():
                     try:
                         encerrar_recorrencia_despesa(id_dr)
                         invalidar_cache_panorama()
-                        st.success(f"Recorrência de '{desc_dr}' encerrada a partir de hoje.")
+                        avisar(f"Recorrência da despesa '{desc_dr}' (#{id_dr}) encerrada a partir de hoje.",
+                               chave=_CHAVE_MSG_RECORRENTES)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro: {e}")
@@ -374,14 +383,14 @@ def _sub_recorrentes():
                     try:
                         encerrar_recorrencia_receita(id_rr)
                         invalidar_cache_panorama()
-                        st.success(f"Recorrência de '{desc_rr}' encerrada a partir de hoje.")
+                        avisar(f"Recorrência da receita '{desc_rr}' (#{id_rr}) encerrada a partir de hoje.",
+                               chave=_CHAVE_MSG_RECORRENTES)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro: {e}")
 
     st.markdown("---")
     st.markdown("##### Cadastro rápido de receita recorrente")
-    exibir_mensagem_pendente()
 
     # Fora do st.form de propósito — ver comentário em paginas/lancar_despesa.py.
     c_valor, _ = st.columns([1, 3])
@@ -412,7 +421,8 @@ def _sub_recorrentes():
                 salvar_receita(qdesc.strip(), qv, qdata.strftime("%Y-%m-%d"), qcat, "",
                                recorrente=True, recorrencia_fim=None)
                 invalidar_cache_panorama()
-                concluir_com_sucesso(f"Receita recorrente '{qdesc}' cadastrada!", campo_valor_base_key="qr_valor")
+                concluir_com_sucesso(f"Receita recorrente cadastrada: {qdesc.strip()} — {fmt_moeda(qv)}",
+                                     campo_valor_base_key="qr_valor", chave=_CHAVE_MSG_RECORRENTES)
             except Exception as e:
                 st.error(f"Erro ao cadastrar: {e}")
 
