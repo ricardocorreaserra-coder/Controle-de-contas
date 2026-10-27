@@ -3,7 +3,7 @@ Controle de Contas - Versão Web (Streamlit + Google Sheets)
 Uso: streamlit run app.py
 
 Este arquivo é apenas o ponto de entrada: configura a página, aplica o CSS,
-verifica autenticação e monta o menu lateral de navegação. Toda a lógica
+verifica autenticação e monta o menu de navegação (no topo da tela). Toda a lógica
 de negócio e acesso a dados vive em `logica/`, `sheets/` e `utils/`; o
 conteúdo de cada página vive em `paginas/`.
 """
@@ -30,7 +30,7 @@ st.set_page_config(
     page_title="Controle de Contas",
     page_icon=":moneybag:",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed",  # não há mais menu lateral (menu fica no topo)
 )
 
 # ── Estilos CSS ───────────────────────────────────────────────────────────────
@@ -61,28 +61,35 @@ if _usuario != USUARIO_PADRAO:
         st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# NAVEGAÇÃO (menu lateral)
+# NAVEGAÇÃO (menu no topo)
 # ══════════════════════════════════════════════════════════════════════════════
 # Antes disso o app usava st.tabs, que renderiza as 8 páginas a cada
 # interação (digitar em um campo já reprocessa Dashboard, Planejamento
-# etc. por baixo, mesmo invisíveis). Com st.sidebar.radio + chamada
-# condicional, só a página selecionada roda — as outras 7 ficam paradas
-# até o usuário clicar nelas.
-PAGINAS = {
-    "📊 Dashboard": dashboard,
-    "➖ Lançar Despesa": lancar_despesa,
-    "➕ Lançar Receita": lancar_receita,
-    "☰ Despesas": lista_despesas,
-    "💳 Cartão de Crédito": cartao_credito,
-    "🏦 Conta Corrente": conta_corrente,
-    "🔮 Planejamento 12 Meses": planejamento_12_meses,
-    "🏛️ Empréstimos": emprestimos,
-}
+# etc. por baixo, mesmo invisíveis). Com st.navigation, só a página
+# selecionada roda — as outras 7 ficam paradas até o usuário clicar nelas.
+# Cada página tem um url_path próprio (todas as funções se chamam "render",
+# então o Streamlit não consegue inferir o endereço sozinho).
+_PAGINAS = [
+    (dashboard, "Dashboard", "📊", "dashboard"),
+    (lancar_despesa, "Despesa", "➖", "lancar-despesa"),
+    (lancar_receita, "Receita", "➕", "lancar-receita"),
+    (lista_despesas, "Despesas", "📋", "despesas"),
+    (cartao_credito, "Cartão", "💳", "cartao"),
+    (conta_corrente, "Conta", "🏦", "conta-corrente"),
+    (planejamento_12_meses, "Planejar", "🔮", "planejamento"),
+    (emprestimos, "Empréstimos", "🏛️", "emprestimos"),
+]
 
-st.sidebar.markdown("### 💰 Controle de Contas")
-pagina_escolhida = st.sidebar.radio("Navegação", list(PAGINAS.keys()), label_visibility="collapsed")
+pagina_atual = st.navigation(
+    [
+        st.Page(modulo.render, title=titulo, icon=icone, url_path=caminho,
+                default=(caminho == "dashboard"))
+        for modulo, titulo, icone, caminho in _PAGINAS
+    ],
+    position="top",
+)
 # Avisos flutuantes das movimentações feitas na execução anterior (lançar/alterar/
 # excluir) — aparecem em qualquer página, mesmo com a tela rolada.
 exibir_toasts_pendentes()
 
-PAGINAS[pagina_escolhida].render()
+pagina_atual.run()
