@@ -161,21 +161,54 @@ def _consolidar_resumo(df_linhas: pd.DataFrame, meses: list) -> pd.DataFrame:
     return pd.DataFrame(resumo_rows)
 
 
-def _computar_panorama() -> tuple:
-    """
-    Orquestra as 4 fontes e retorna (df_linhas, df_resumo).
-    Função pura — sem cache próprio; o cache é gerenciado por get_panorama().
-    """
-    meses = proximos_12_meses()
+def _linhas_projetadas(meses: list) -> pd.DataFrame:
+    """Junta as 4 fontes de projeção para a lista de meses 'YYYY-MM' informada."""
     linhas = (
         _projetar_parcelas_cartao(carregar_parcelas(), meses)
         + _projetar_despesas(carregar_despesas(), meses)
         + _projetar_receitas(carregar_receitas(), meses)
         + _projetar_planejamento(carregar_planejamento(), meses)
     )
-    df_linhas = pd.DataFrame(linhas, columns=_COLS_LINHAS) if linhas else pd.DataFrame(columns=_COLS_LINHAS)
+    return pd.DataFrame(linhas, columns=_COLS_LINHAS) if linhas else pd.DataFrame(columns=_COLS_LINHAS)
+
+
+def _computar_panorama() -> tuple:
+    """
+    Orquestra as 4 fontes e retorna (df_linhas, df_resumo).
+    Função pura — sem cache próprio; o cache é gerenciado por get_panorama().
+    """
+    meses = proximos_12_meses()
+    df_linhas = _linhas_projetadas(meses)
     df_resumo = _consolidar_resumo(df_linhas, meses)
     return df_linhas, df_resumo
+
+
+def projetar_resumo_meses(meses: list) -> pd.DataFrame:
+    """
+    Mesmo resumo do panorama (Receitas, Cartão, Recorrentes, Despesas (total),
+    Saldo projetado...) para uma lista QUALQUER de meses 'YYYY-MM', sem o cache
+    de sessão do `get_panorama`. Usado pela linha do tempo do Dashboard, que não
+    pode mostrar um planejado velho depois de lançar algo em outra tela.
+    """
+    meses = list(meses)
+    if not meses:
+        return pd.DataFrame(columns=["mes", "Mês", "Receitas", "Cartão", "Recorrentes",
+                                     "Outras desp.", "Despesas (total)", "Saldo projetado"])
+    return _consolidar_resumo(_linhas_projetadas(meses), meses)
+
+
+def despesas_planejadas_por_mes(meses: list) -> dict:
+    """
+    {mes: despesas planejadas (total)} só para os meses que o Planejamento cobre
+    (os 12 seguintes ao atual). Meses fora disso ficam de fora do dicionário —
+    quem chama mostra "—" (não há planejado para eles).
+    """
+    cobertos = set(proximos_12_meses())
+    validos = [m for m in meses if m in cobertos]
+    if not validos:
+        return {}
+    df = projetar_resumo_meses(validos)
+    return {str(m): float(v) for m, v in zip(df["mes"], df["Despesas (total)"])}
 
 
 # ── Cache de panorama via session_state (R-03) ────────────────────────────────

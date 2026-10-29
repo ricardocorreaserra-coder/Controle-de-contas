@@ -8,11 +8,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from sheets.loaders import carregar_despesas, carregar_receitas
-from logica.dashboard import resumo_mes
+from logica.dashboard import resumo_mes, janela_meses, linha_do_tempo
 from logica.despesas import despesa_esta_pendente
+from logica.planejamento import despesas_planejadas_por_mes
 from logica.relatorios import pdf_dashboard
 from utils.datas import add_months, fmt_mes_pt, fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, kpi_card_html
+from utils.formatacao import fmt_moeda, kpi_card_html, linha_do_tempo_html
 from utils.widgets import botao_pdf, barra_periodo
 
 
@@ -60,6 +61,20 @@ def render():
         df_r["valor"] = pd.to_numeric(df_r["valor"], errors='coerce').fillna(0.0)
 
     desp_mes = df_d[df_d["data"].astype(str).str.startswith(mes_dash)] if not df_d.empty else pd.DataFrame()
+
+    # Linha do tempo: 3 meses antes, o selecionado e 2 depois. Meses futuros mostram o
+    # PLANEJADO (calculado na hora, sem o cache de sessão do Planejamento). Ela é um
+    # complemento: se o cálculo do planejado falhar, o resto do Dashboard segue normal.
+    mes_atual = hoje_br().strftime("%Y-%m")
+    planejado_falhou = False
+    try:
+        planejado = despesas_planejadas_por_mes([m for m in janela_meses(mes_dash) if m > mes_atual])
+    except Exception:
+        planejado, planejado_falhou = {}, True
+    st.markdown(linha_do_tempo_html(linha_do_tempo(mes_dash, mes_atual, df_d_todas, planejado)),
+                unsafe_allow_html=True)
+    if planejado_falhou:
+        st.caption("Não foi possível calcular o planejado dos próximos meses agora.")
 
     resumo = resumo_mes(df_d_todas, df_r, mes_dash)
     total_rec, total_desp, saldo = resumo["total_rec"], resumo["total_desp"], resumo["saldo"]

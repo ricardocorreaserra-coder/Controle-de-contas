@@ -6,6 +6,7 @@ Sem dependência de Streamlit nem de Google Sheets — fáceis de testar isolada
 import html as _html
 import re
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 
 
 def fmt_moeda(v):
@@ -100,4 +101,80 @@ def kpi_card_html(icone, label, value, color_class, sublinhas=()):
         f'<div class="card-value {color_class}">{_html.escape(str(value))}</div>'
         f"{subs}</div>"
     )
+
+
+def fmt_moeda_inteiro(v):
+    """'R$ 4.805' (sem centavos) — para blocos estreitos como a linha do tempo."""
+    try:
+        # ROUND_HALF_UP: 420,50 → 421 (o arredondamento padrão do Python daria 420)
+        inteiro = int(Decimal(str(float(v))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        return "R$ {:,}".format(inteiro).replace(",", ".")
+    except Exception:
+        return "—"
+
+
+# CSS próprio da linha do tempo (vai junto do HTML). Só cores translúcidas/herdadas
+# nos blocos comuns (tema claro/escuro — regra 8); o vermelho do destaque é o mesmo
+# das classes `.red` do app.
+_CSS_LINHA_DO_TEMPO = """
+<style>
+.tl-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:2px 0 6px;}
+.tl-bloco{border:1px solid rgba(128,128,128,0.30);background:rgba(128,128,128,0.06);
+  border-radius:8px;padding:10px 4px;text-align:center;min-width:0;}
+.tl-mes{font-size:0.82rem;opacity:0.75;line-height:1.3;white-space:nowrap;}
+.tl-valor{font-size:0.95rem;font-weight:600;margin-top:4px;line-height:1.3;white-space:nowrap;}
+.tl-sub{font-size:0.7rem;opacity:0.6;margin-top:2px;line-height:1.2;min-height:0.9rem;}
+.tl-fut{border:1px dashed rgba(128,128,128,0.65);background:transparent;}
+.tl-fut .tl-valor{opacity:0.85;}
+.tl-sel{border:1.5px solid rgba(220,38,38,0.75);background:rgba(220,38,38,0.12);}
+.tl-sel .tl-mes,.tl-sel .tl-valor{color:#dc2626;opacity:1;}
+.tl-sel.tl-fut{border-style:dashed;}
+.tl-legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:0.75rem;opacity:0.75;margin-bottom:14px;}
+.tl-sw{display:inline-block;width:14px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px;}
+.tl-curto{display:none;}
+@media (max-width:640px){
+  .tl-grid{gap:4px;}
+  .tl-bloco{padding:8px 1px;}
+  .tl-mes{font-size:0.72rem;}
+  .tl-valor{font-size:0.7rem;}
+  .tl-longo{display:none;}
+  .tl-curto{display:inline;}
+}
+</style>
+"""
+
+
+def linha_do_tempo_html(blocos) -> str:
+    """
+    HTML da linha do tempo de meses do Dashboard (blocos de `logica.dashboard.linha_do_tempo`).
+    Selecionado em vermelho; mês futuro com borda tracejada e o valor planejado.
+    """
+    itens = []
+    for b in blocos:
+        classes = "tl-bloco"
+        if b["planejado"]:
+            classes += " tl-fut"
+        if b["selecionado"]:
+            classes += " tl-sel"
+        valor = "—" if b["valor"] is None else fmt_moeda_inteiro(b["valor"])
+        sub = ('<span class="tl-longo">planejado</span><span class="tl-curto">plan.</span>'
+               if b["planejado"] else "")
+        rotulo = _html.escape(str(b["rotulo"]))
+        tipo = "planejadas" if b["planejado"] else "pagas"
+        itens.append(
+            f'<div class="{classes}" title="Despesas {tipo} — {rotulo}">'
+            f'<div class="tl-mes">{rotulo}</div>'
+            f'<div class="tl-valor">{_html.escape(valor)}</div>'
+            f'<div class="tl-sub">{sub}</div></div>'
+        )
+    legenda = (
+        '<div class="tl-legenda">'
+        '<span><span class="tl-sw" style="border:1.5px solid rgba(220,38,38,0.75);'
+        'background:rgba(220,38,38,0.12)"></span>Mês selecionado</span>'
+        '<span><span class="tl-sw" style="border:1px solid rgba(128,128,128,0.45);'
+        'background:rgba(128,128,128,0.06)"></span>Despesas pagas</span>'
+        '<span><span class="tl-sw" style="border:1px dashed rgba(128,128,128,0.8)"></span>'
+        'Despesas planejadas</span></div>'
+    )
+    return _CSS_LINHA_DO_TEMPO + '<div class="tl-grid">' + "".join(itens) + "</div>" + legenda
 

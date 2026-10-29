@@ -11,7 +11,9 @@ Novidade: `a_pagar` = despesas PENDENTES com data no mês, mostradas à parte.
 
 import pandas as pd
 
+from config import MESES_PT
 from logica.despesas import despesa_esta_pendente
+from utils.datas import deslocar_mes
 
 
 def _do_mes(df, mes: str) -> pd.DataFrame:
@@ -50,3 +52,41 @@ def resumo_mes(df_despesas, df_receitas, mes: str) -> dict:
         "a_pagar": a_pagar, "n_a_pagar": int(len(pendentes)),
         "saldo": saldo, "saldo_apos": saldo - a_pagar,
     }
+
+
+def janela_meses(selecionado: str, antes: int = 3, depois: int = 2) -> list:
+    """['YYYY-MM', ...]: `antes` meses antes do selecionado, ele mesmo e `depois` meses depois."""
+    ano, mes = int(selecionado[:4]), int(selecionado[5:7])
+    return ["{:04d}-{:02d}".format(*deslocar_mes(ano, mes, d)) for d in range(-antes, depois + 1)]
+
+
+def linha_do_tempo(selecionado: str, mes_atual: str, df_despesas, planejado: dict) -> list:
+    """
+    Blocos da linha do tempo do Dashboard (3 meses antes do selecionado, ele e 2 depois).
+
+    O valor de cada bloco depende de ele ser futuro em relação a HOJE (`mes_atual`),
+    não de qual está selecionado:
+      • mês atual ou passado → despesas PAGAS do mês (mesmo cálculo dos cartões e
+        do gráfico "Histórico 6 meses");
+      • mês futuro → despesas PLANEJADAS (`planejado[mes]`, vindo do Planejamento);
+        sem planejado para o mês, `valor` é None (a tela mostra "—").
+    O selecionado só ganha destaque (`selecionado=True`). `df_despesas` deve trazer
+    todas as despesas, inclusive as pendentes.
+    Devolve [{mes, rotulo, valor, planejado, selecionado}, ...].
+    """
+    blocos = []
+    for mes in janela_meses(selecionado):
+        futuro = mes > mes_atual
+        if futuro:
+            valor = planejado.get(mes)
+            valor = None if valor is None else float(valor)
+        else:
+            valor = resumo_mes(df_despesas, None, mes)["total_desp"]
+        ano_s, mes_n = mes[:4], int(mes[5:7])
+        rotulo = MESES_PT[mes_n]
+        if mes == selecionado or mes_n == 1:   # ano só onde ajuda a se situar
+            rotulo += f"/{ano_s[2:]}"
+        blocos.append({"mes": mes, "rotulo": rotulo, "valor": valor,
+                       "planejado": futuro, "selecionado": mes == selecionado})
+    return blocos
+
