@@ -90,3 +90,38 @@ def linha_do_tempo(selecionado: str, mes_atual: str, df_despesas, planejado: dic
                        "planejado": futuro, "selecionado": mes == selecionado})
     return blocos
 
+
+def historico_meses(df_despesas, df_receitas, mes_fim: str, n: int = 6) -> pd.DataFrame:
+    """
+    Receitas × despesas PAGAS dos `n` meses que terminam em `mes_fim` ('YYYY-MM').
+    Colunas: "Mês" (ex.: "Out/26"), "Receita", "Despesa" — o formato que o PDF espera.
+    Mesma regra dos cartões (`resumo_mes`): despesa pendente fica de fora.
+    `df_despesas` deve trazer todas as despesas, inclusive as pendentes.
+    """
+    linhas = []
+    for mes in janela_meses(mes_fim, antes=n - 1, depois=0):
+        r = resumo_mes(df_despesas, df_receitas, mes)
+        linhas.append({"Mês": f"{MESES_PT[int(mes[5:7])]}/{mes[2:4]}",
+                       "Receita": r["total_rec"], "Despesa": r["total_desp"]})
+    return pd.DataFrame(linhas, columns=["Mês", "Receita", "Despesa"])
+
+
+def participacao(df, coluna: str, vazio: str = "Não informado") -> pd.DataFrame:
+    """
+    Quanto cada valor de `coluna` (ex.: forma de pagamento) pesa no total de `df`.
+    Colunas: "Nome", "Valor", "Percentual" (0 a 100), da maior para a menor fatia.
+    Texto em branco vira `vazio`. DataFrame vazio (ou sem a coluna) → resultado vazio.
+    """
+    colunas = ["Nome", "Valor", "Percentual"]
+    if df is None or df.empty or coluna not in df.columns or "valor" not in df.columns:
+        return pd.DataFrame(columns=colunas)
+    d = pd.DataFrame({
+        "Nome": df[coluna].fillna("").astype(str).str.strip().replace("", vazio),
+        "Valor": pd.to_numeric(df["valor"], errors="coerce").fillna(0.0),
+    })
+    g = d.groupby("Nome", as_index=False)["Valor"].sum()
+    g = g[g["Valor"] > 0].sort_values(["Valor", "Nome"], ascending=[False, True]).reset_index(drop=True)
+    total = float(g["Valor"].sum())
+    g["Percentual"] = g["Valor"] / total * 100 if total else 0.0
+    return g[colunas]
+

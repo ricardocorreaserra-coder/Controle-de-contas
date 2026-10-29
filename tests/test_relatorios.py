@@ -300,7 +300,7 @@ class TestPdfDashboard:
         texto = ler(b)[0][0]
         for t in ("Dashboard", "Período: Out/26", "Receitas do mês", "Despesas do mês",
                   "Saldo do mês", "R$ 992,58", "-R$ 992,58".replace("-R$ ", "R$ -"),
-                  "Histórico dos últimos 6 meses", "Despesas por categoria",
+                  "Histórico de 6 meses", "Despesas por categoria",
                   "Despesas por forma de pagamento", "Outros", "Alimentação", "Pix", "Dinheiro"):
             assert t in texto, t
 

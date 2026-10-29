@@ -8,11 +8,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from sheets.loaders import carregar_despesas, carregar_receitas
-from logica.dashboard import resumo_mes, janela_meses, linha_do_tempo
+from logica.dashboard import resumo_mes, janela_meses, linha_do_tempo, historico_meses, participacao
 from logica.despesas import despesa_esta_pendente
 from logica.planejamento import despesas_planejadas_por_mes
 from logica.relatorios import pdf_dashboard
-from utils.datas import add_months, fmt_mes_pt, fmt_mes_str_pt, hoje_br
+from utils.datas import fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, kpi_card_html, linha_do_tempo_html
 from utils.widgets import botao_pdf, barra_periodo
 
@@ -97,47 +97,51 @@ def render():
                     unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.subheader("Histórico 6 meses")
-        hist = []
-        for i in range(5, -1, -1):
-            d   = hoje_br()
-            mm  = add_months(d, -i).strftime("%Y-%m")
-            lbl = fmt_mes_pt(add_months(d, -i))
-            r_val = float(df_r[df_r["data"].astype(str).str.startswith(mm)]["valor"].sum()) if not df_r.empty else 0.0
-            e_val = float(df_d[df_d["data"].astype(str).str.startswith(mm)]["valor"].sum()) if not df_d.empty else 0.0
-            hist.append({"Mês": lbl, "Receita": r_val, "Despesa": e_val})
-        df_hist = pd.DataFrame(hist)
-        fig1 = go.Figure()
-        fig1.add_bar(x=df_hist["Mês"], y=df_hist["Receita"], name="Receita", marker_color="#16a34a",
-                     hovertemplate='Receita: R$ %{y:,.2f}<extra></extra>')
-        fig1.add_bar(x=df_hist["Mês"], y=df_hist["Despesa"], name="Despesa", marker_color="#dc2626",
-                     hovertemplate='Despesa: R$ %{y:,.2f}<extra></extra>')
-        fig1.update_layout(barmode="group", height=300, separators=',.',
-                           margin=dict(t=10, b=10, l=10, r=10),
-                           legend=dict(orientation="h", y=-0.2))
-        st.plotly_chart(fig1, use_container_width=True)
+    # Histórico: 6 meses terminando no mês selecionado (nunca depois do mês atual —
+    # meses futuros ainda não têm movimento realizado).
+    df_hist = historico_meses(df_d_todas, df_r, min(mes_dash, mes_atual))
 
-    with col2:
-        st.subheader("Despesas por categoria")
-        if not desp_mes.empty and "categoria" in desp_mes.columns:
-            grp = desp_mes.groupby("categoria")["valor"].sum().reset_index()
-            grp.columns = ["Categoria", "Valor"]
-            fig2 = _rosquinha(grp, "Categoria", px.colors.qualitative.Set2)
-            st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.info("Sem dados para o período.")
+    col_hist, col_cat = st.columns(2)
+    with col_hist:
+        with st.container(border=True):
+            st.markdown("##### Histórico de 6 meses")
+            st.caption(f"{df_hist['Mês'].iloc[0]} a {df_hist['Mês'].iloc[-1]} · receitas e despesas pagas")
+            fig1 = go.Figure()
+            fig1.add_bar(x=df_hist["Mês"], y=df_hist["Receita"], name="Receita", marker_color="#16a34a",
+                         hovertemplate='Receita: R$ %{y:,.2f}<extra></extra>')
+            fig1.add_bar(x=df_hist["Mês"], y=df_hist["Despesa"], name="Despesa", marker_color="#dc2626",
+                         hovertemplate='Despesa: R$ %{y:,.2f}<extra></extra>')
+            fig1.update_layout(barmode="group", height=300, separators=',.',
+                               margin=dict(t=10, b=10, l=10, r=10),
+                               legend=dict(orientation="h", y=-0.2))
+            # automargin: com margem esquerda de 10 px os números do eixo (ex.: 6.000)
+            # saíam cortados na borda do gráfico.
+            fig1.update_yaxes(automargin=True, tickformat=",.0f")
+            st.plotly_chart(fig1, width="stretch")
 
-    with col3:
-        st.subheader("Por pagamento")
-        if not desp_mes.empty and "pagamento" in desp_mes.columns:
-            grp2 = desp_mes.groupby("pagamento")["valor"].sum().reset_index()
-            grp2.columns = ["Pagamento", "Valor"]
-            fig3 = _rosquinha(grp2, "Pagamento", px.colors.qualitative.Pastel)
-            st.plotly_chart(fig3, use_container_width=True)
-        else:
+    with col_cat:
+        with st.container(border=True):
+            st.markdown("##### Despesas por categoria")
+            st.caption(f"{fmt_mes_str_pt(mes_dash)} · despesas pagas")
+            if not desp_mes.empty and "categoria" in desp_mes.columns:
+                grp = desp_mes.groupby("categoria")["valor"].sum().reset_index()
+                grp.columns = ["Categoria", "Valor"]
+                fig2 = _rosquinha(grp, "Categoria", px.colors.qualitative.Set2)
+                st.plotly_chart(fig2, width="stretch")
+            else:
+                st.info("Sem dados para o período.")
+
+    with st.container(border=True):
+        st.markdown("##### Por pagamento")
+        st.caption(f"{fmt_mes_str_pt(mes_dash)} · despesas pagas")
+        por_pagamento = participacao(desp_mes, "pagamento")
+        if por_pagamento.empty:
             st.info("Sem dados para o período.")
+        else:
+            for _, linha in por_pagamento.iterrows():
+                pct = f"{linha['Percentual']:.1f}%".replace(".", ",")
+                st.progress(min(max(float(linha["Percentual"]) / 100, 0.0), 1.0),
+                            text=f"{linha['Nome']} · {fmt_moeda(linha['Valor'])} ({pct})")
 
     # Impressão (PDF) — mesmas contas e filtros da tela
     def _por(coluna, nome):

@@ -370,7 +370,7 @@ def pdf_dashboard(periodo: str, total_rec: float, total_desp: float, saldo: floa
                   emitido_por: str = "", agora=None) -> bytes:
     """
     Relatório do Dashboard.
-    df_hist : colunas "Mês", "Receita", "Despesa" (floats) — últimos 6 meses.
+    df_hist : colunas "Mês", "Receita", "Despesa" (floats) — 6 meses terminando no mês do relatório.
     df_cat  : colunas "Categoria", "Valor" — despesas do mês por categoria.
     df_pag  : colunas "Pagamento", "Valor" — despesas do mês por forma de pagamento.
     """
@@ -389,7 +389,7 @@ def pdf_dashboard(periodo: str, total_rec: float, total_desp: float, saldo: floa
               ("Despesas do mês", fmt_moeda(total_desp), "vermelho"),
               ("Saldo do mês", fmt_moeda(saldo), "verde" if saldo >= 0 else "vermelho")],
         secoes=[
-            Secao("Histórico dos últimos 6 meses", hist_show),
+            Secao("Histórico de 6 meses", hist_show),
             secao_participacao("Despesas por categoria", "Categoria", df_cat, nota=nota),
             secao_participacao("Despesas por forma de pagamento", "Pagamento", df_pag, nota=nota),
         ],
