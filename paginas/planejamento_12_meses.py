@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from config import CAT_DESP, CAT_REC
+from config import CAT_DESP, CAT_REC, CONTAS
 from sheets.loaders import carregar_despesas, carregar_receitas, carregar_planejamento
 from logica.despesas import encerrar_recorrencia_despesa
 from logica.receitas import salvar_receita, encerrar_recorrencia_receita
@@ -402,11 +402,13 @@ def _sub_recorrentes():
         qr3, qr4 = st.columns(2)
         qdata = qr3.date_input("Início *", value=hoje_br(), format="DD/MM/YYYY", key="qr_data")
         qcat  = qr4.selectbox("Categoria", [""] + CAT_REC, key="qr_cat")
+        qconta = st.selectbox("Conta de entrada *", [""] + CONTAS, key="qr_conta")
         qsubmit = st.form_submit_button("✔ Cadastrar receita recorrente", type="primary", use_container_width=True)
 
     if qsubmit:
         erros_qr = []
         if not qdesc.strip(): erros_qr.append("Preencha a descrição.")
+        if not qconta: erros_qr.append("Selecione a conta de entrada.")
         try:
             qv = parse_valor(qvalor)
             if not (0 < qv <= 1_000_000):
@@ -419,7 +421,7 @@ def _sub_recorrentes():
         else:
             try:
                 salvar_receita(qdesc.strip(), qv, qdata.strftime("%Y-%m-%d"), qcat, "",
-                               recorrente=True, recorrencia_fim=None)
+                               recorrente=True, recorrencia_fim=None, conta=qconta)
                 invalidar_cache_panorama()
                 concluir_com_sucesso(f"Receita recorrente cadastrada: {qdesc.strip()} — {fmt_moeda(qv)}",
                                      campo_valor_base_key="qr_valor", chave=_CHAVE_MSG_RECORRENTES)

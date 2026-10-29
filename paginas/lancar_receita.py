@@ -3,7 +3,7 @@
 
 import streamlit as st
 
-from config import CAT_REC
+from config import CAT_REC, CONTAS
 from logica.receitas import salvar_receita
 from utils.datas import hoje_br
 from utils.formatacao import parse_valor, fmt_moeda
@@ -26,6 +26,7 @@ def render():
         r3, r4 = st.columns(2)
         rdata = r3.date_input("Data *", value=hoje_br(), format="DD/MM/YYYY")
         rcat  = r4.selectbox("Categoria", [""] + CAT_REC)
+        rconta = st.selectbox("Conta de entrada *", [""] + CONTAS)
 
         st.markdown("##### 🔁 Recorrência")
         rrecorrente = st.checkbox("Receita recorrente (mensal)", key="rec_recorrente")
@@ -43,6 +44,8 @@ def render():
         erros = []
         if not rdesc.strip():
             erros.append("Preencha a descrição.")
+        if not rconta:
+            erros.append("Selecione a conta de entrada.")
         try:
             rv = parse_valor(rvalor)
             if not (0 < rv <= 1_000_000):
@@ -60,8 +63,8 @@ def render():
                 st.session_state["salvando_receita"] = True
                 try:
                     salvar_receita(rdesc.strip(), rv, rdata.strftime("%Y-%m-%d"), rcat, robs.strip(),
-                                   recorrente=rrecorrente, recorrencia_fim=rrec_fim)
-                    concluir_com_sucesso(f"Receita lançada: {rdesc.strip()} — {fmt_moeda(rv)}",
+                                   recorrente=rrecorrente, recorrencia_fim=rrec_fim, conta=rconta)
+                    concluir_com_sucesso(f"Receita lançada: {rdesc.strip()} — {fmt_moeda(rv)} ({rconta})",
                                          campo_valor_base_key="rec_valor")
                 except Exception as e:
                     st.error(f"Erro ao salvar receita: {e}")

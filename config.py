@@ -26,6 +26,13 @@ CAT_DESP     = ["Alimentação", "Restaurantes e delivery", "Transporte",
                  "Despesa bancária", "Outros"]
 CAT_REC      = ["Salário", "Freelance", "13º e férias", "Investimentos",
                  "Reembolsos", "Outros"]
+# Contas em que as receitas entram. Cada receita grava o NOME da conta como texto
+# (igual às categorias — regra 11: renomear/remover aqui NÃO altera lançamentos
+# antigos). O saldo continua único/consolidado: as despesas saem do total geral,
+# não de uma conta específica. Receitas sem conta aparecem como SEM_CONTA.
+CONTAS       = ["Santander Rio", "Santander Rio Bonito", "Itaú",
+                "Mercado Pago Sara", "Mercado Pago Ricardo"]
+SEM_CONTA    = "Sem conta"
 DIA_VENCIMENTO_PADRAO = 10  # usado apenas se um cartão referenciado não for encontrado no cadastro
 
 # ── Google Sheets ──────────────────────────────────────────────────────────────
@@ -44,7 +51,7 @@ EXPECTED_HEADERS = {
                  "origem_vencimento", "data_compra"],
     "receitas": ["id", "descricao", "valor", "data",
                  "categoria", "observacao", "criado_em", "recorrente", "recorrencia_fim",
-                 "lancado_por"],
+                 "lancado_por", "conta"],
     "cartoes":  ["id", "nome", "limite", "dia_fechamento", "dia_vencimento", "criado_em"],
     "planejamento": ["id", "tipo", "descricao", "valor", "mes",
                       "categoria", "observacao", "criado_em", "lancado_por"],

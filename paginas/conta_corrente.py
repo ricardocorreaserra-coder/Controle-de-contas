@@ -6,9 +6,9 @@ from functools import partial
 import pandas as pd
 import streamlit as st
 
-from config import CAT_REC
+from config import CAT_REC, CONTAS, SEM_CONTA
 from sheets.loaders import carregar_despesas, carregar_receitas
-from logica.receitas import excluir_receita, atualizar_receita
+from logica.receitas import excluir_receita, atualizar_receita, entradas_por_conta
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
@@ -16,6 +16,13 @@ from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
     avisar,
 )
+
+
+def _conta_txt(valor) -> str:
+    """Conta gravada na receita como texto limpo ('' se vazia/NaN)."""
+    if valor is None or pd.isna(valor):
+        return ""
+    return str(valor).strip()
 
 
 def render():
@@ -46,6 +53,20 @@ def render():
     with m3: st.markdown(card_html("Saldo acumulado", fmt_moeda(saldo_cc),      saldo_cor_cc), unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # Entradas por conta: cada receita grava a conta em que entrou, mas o saldo
+    # acima continua único (as despesas saem do total consolidado, não de uma conta).
+    df_ent = None
+    if not rec_cc.empty:
+        st.markdown("##### Entradas por conta")
+        linhas_ent = [{"Conta": conta, "Entradas": fmt_moeda(v),
+                       "% das receitas": f"{(v / total_rec_cc * 100 if total_rec_cc else 0):.1f}%".replace(".", ",")}
+                      for conta, v in entradas_por_conta(rec_cc)]
+        linhas_ent.append({"Conta": "Total", "Entradas": fmt_moeda(total_rec_cc),
+                           "% das receitas": "100,0%" if total_rec_cc else "0,0%"})
+        df_ent = pd.DataFrame(linhas_ent)
+        st.dataframe(df_ent, hide_index=True, width="stretch")
+        st.caption("O saldo acima é consolidado: soma as entradas de todas as contas e desconta as despesas.")
+
     movs = []
     if not rec_cc.empty:
         for _, row in rec_cc.iterrows():
@@ -53,12 +74,14 @@ def render():
                          "Categoria": row.get("categoria", ""), "Valor": float(row["valor"]),
                          "Observação": row.get("observacao", ""),
                          "Lançado por": row.get("lancado_por", ""),
+                         "Conta": _conta_txt(row.get("conta", "")),
                          "ID": row["id"], "_tipo": "rec"})
     if not desp_cc.empty:
         for _, row in desp_cc.iterrows():
             movs.append({"Data": row["data"], "Descrição": row["descricao"], "Tipo": "Despesa",
                          "Categoria": row.get("categoria", ""), "Valor": -float(row["valor"]),
                          "Lançado por": row.get("lancado_por", ""),
+                         "Conta": "",
                          "ID": row["id"], "_tipo": "dsp"})
     movs.sort(key=lambda x: x["Data"])
 
@@ -69,6 +92,7 @@ def render():
         extrato.append({
             "Data": converter_data_para_exibicao(m["Data"]), "Descrição": m["Descrição"],
             "Tipo": m["Tipo"], "Categoria": m["Categoria"],
+            "Conta": (m["Conta"] or SEM_CONTA) if m["_tipo"] == "rec" else "",
             "Valor": fmt_moeda(abs(m["Valor"])), "Saldo": fmt_moeda(saldo_ac),
             "Lançado por": m.get("Lançado por", ""),
         })
@@ -84,7 +108,8 @@ def render():
                 kpis=[("Total receitas", fmt_moeda(total_rec_cc), "verde"),
                       ("Total despesas", fmt_moeda(total_desp_cc), "vermelho"),
                       ("Saldo acumulado", fmt_moeda(saldo_cc), "verde" if saldo_cc >= 0 else "vermelho")],
-                secoes=[Secao("", df_extrato.copy())]),
+                secoes=([Secao("Entradas por conta", df_ent.copy())] if df_ent is not None else [])
+                       + [Secao("", df_extrato.copy())]),
         f"conta_corrente_{mes_cc}.pdf", key="pdf_conta_corrente",
     )
     event_cc = st.dataframe(df_extrato, use_container_width=True, hide_index=True,
@@ -123,6 +148,9 @@ def render():
 
                     cat_opcoes, idx_cat = opcoes_categoria(CAT_REC, mov_sel["Categoria"])
                     cat_edit = st.selectbox("Categoria", cat_opcoes, index=idx_cat)
+                    conta_opcoes, idx_conta = opcoes_categoria(CONTAS, mov_sel["Conta"])
+                    conta_edit = st.selectbox("Conta de entrada (vazio = Sem conta)",
+                                              conta_opcoes, index=idx_conta)
                     obs_edit = st.text_input("Observação", value=str(mov_sel.get("Observação", "")))
 
                     salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",
@@ -145,7 +173,8 @@ def render():
                     else:
                         try:
                             atualizar_receita(id_sel, desc_edit.strip(), v_edit,
-                                              data_edit.strftime("%Y-%m-%d"), cat_edit, obs_edit.strip())
+                                              data_edit.strftime("%Y-%m-%d"), cat_edit, obs_edit.strip(),
+                                              conta=conta_edit)
                             concluir_com_sucesso(f"Receita #{id_sel} atualizada: "
                                                  f"{desc_edit.strip()} — {fmt_moeda(v_edit)}")
                         except Exception as e:
