@@ -7,6 +7,7 @@ o campo de valor monetário com máscara de centavos.
 
 import streamlit as st
 
+from utils.datas import MESES_COMPLETOS, deslocar_mes, hoje_br, seletor_mes_ano
 from utils.formatacao import formatar_input_moeda
 
 
@@ -189,3 +190,47 @@ def botao_pdf(rotulo: str, gerar, nome_arquivo: str, key: str) -> None:
         on_click="ignore",
         use_container_width=True,
     )
+
+
+def barra_periodo(key_prefix: str) -> str:
+    """
+    Barra de período: [‹] [Outubro 2026 ▾] [›] [Este mês]. Devolve 'YYYY-MM'.
+
+    Reaproveita `seletor_mes_ano` (os mesmos selects de Ano e Mês, mesmas keys
+    `<prefixo>_ano` / `<prefixo>_mes`) dentro do menu que abre ao clicar no mês,
+    para pular direto para outro mês/ano. As setas e o "Este mês" só mexem nessas
+    keys (num callback, antes de a tela ser redesenhada). O intervalo é o mesmo
+    do seletor antigo: do ano atual − 4 até dezembro do ano atual.
+    `st.container(horizontal=True)` mantém os botões na MESMA linha no celular
+    (colunas empilham em tela estreita).
+    """
+    hoje = hoje_br()
+    k_ano, k_mes = f"{key_prefix}_ano", f"{key_prefix}_mes"
+    ano_min, ano_max = hoje.year - 4, hoje.year
+    ano = st.session_state.get(k_ano, hoje.year)
+    mes = st.session_state.get(k_mes, hoje.month)
+
+    def _ir(a, m):
+        st.session_state[k_ano], st.session_state[k_mes] = a, m
+
+    def _mover(delta):
+        a, m = deslocar_mes(st.session_state.get(k_ano, hoje.year),
+                            st.session_state.get(k_mes, hoje.month), delta)
+        if ano_min <= a <= ano_max:
+            _ir(a, m)
+
+    pode_voltar = ano_min <= deslocar_mes(ano, mes, -1)[0]
+    pode_avancar = deslocar_mes(ano, mes, 1)[0] <= ano_max
+    com_mes_atual = (ano, mes) == (hoje.year, hoje.month)
+
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.button("‹", key=f"{key_prefix}_mes_ant", on_click=_mover, args=(-1,),
+                  disabled=not pode_voltar, help="Mês anterior")
+        with st.popover(f"{MESES_COMPLETOS[mes]} {ano}", help="Escolher outro mês ou ano"):
+            periodo = seletor_mes_ano(key_prefix)
+        st.button("›", key=f"{key_prefix}_mes_prox", on_click=_mover, args=(1,),
+                  disabled=not pode_avancar, help="Próximo mês")
+        st.button("Este mês", key=f"{key_prefix}_mes_hoje", on_click=_ir,
+                  args=(hoje.year, hoje.month), disabled=com_mes_atual)
+    return periodo
+

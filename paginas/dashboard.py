@@ -8,11 +8,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from sheets.loaders import carregar_despesas, carregar_receitas
+from logica.dashboard import resumo_mes
 from logica.despesas import despesa_esta_pendente
 from logica.relatorios import pdf_dashboard
-from utils.datas import seletor_mes_ano, add_months, fmt_mes_pt, fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, card_html
-from utils.widgets import botao_pdf
+from utils.datas import add_months, fmt_mes_pt, fmt_mes_str_pt, hoje_br
+from utils.formatacao import fmt_moeda, kpi_card_html
+from utils.widgets import botao_pdf, barra_periodo
 
 
 def _rosquinha(grp: pd.DataFrame, coluna_nomes: str, cores):
@@ -39,12 +40,15 @@ def _rosquinha(grp: pd.DataFrame, coluna_nomes: str, cores):
 
 
 def render():
-    st.markdown("##### Filtro de Período")
-    mes_dash = seletor_mes_ano("dash")
-    slot_pdf = st.container()   # o botão de impressão é preenchido no fim, quando os dados já existem
+    barra, col_pdf = st.columns([3, 1], vertical_alignment="center")
+    with barra:
+        mes_dash = barra_periodo("dash")
+    with col_pdf:
+        slot_pdf = st.container()   # o botão de impressão é preenchido no fim, quando os dados já existem
 
     df_d = carregar_despesas()
     df_r = carregar_receitas()
+    df_d_todas = df_d.copy()   # com as pendentes: só o cartão "A pagar" precisa delas
 
     if not df_d.empty and "valor" in df_d.columns:
         df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
@@ -56,17 +60,26 @@ def render():
         df_r["valor"] = pd.to_numeric(df_r["valor"], errors='coerce').fillna(0.0)
 
     desp_mes = df_d[df_d["data"].astype(str).str.startswith(mes_dash)] if not df_d.empty else pd.DataFrame()
-    rec_mes  = df_r[df_r["data"].astype(str).str.startswith(mes_dash)]  if not df_r.empty else pd.DataFrame()
 
-    total_rec  = float(rec_mes["valor"].sum())  if not rec_mes.empty  else 0.0
-    total_desp = float(desp_mes["valor"].sum()) if not desp_mes.empty else 0.0
-    saldo      = total_rec - total_desp
-    saldo_cor  = "green" if saldo >= 0 else "red"
+    resumo = resumo_mes(df_d_todas, df_r, mes_dash)
+    total_rec, total_desp, saldo = resumo["total_rec"], resumo["total_desp"], resumo["saldo"]
+    saldo_cor = "blue" if saldo >= 0 else "red"
+    a_pagar_txt = fmt_moeda(resumo["a_pagar"])
+    if resumo["n_a_pagar"]:
+        a_pagar_txt += f" ({resumo['n_a_pagar']})"
 
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(card_html("Receitas do mês", fmt_moeda(total_rec),  "green"),   unsafe_allow_html=True)
-    with c2: st.markdown(card_html("Despesas do mês", fmt_moeda(total_desp), "red"),     unsafe_allow_html=True)
-    with c3: st.markdown(card_html("Saldo do mês",    fmt_moeda(saldo),      saldo_cor), unsafe_allow_html=True)
+    with c1:
+        st.markdown(kpi_card_html("💵", "Receitas do mês", fmt_moeda(total_rec), "green",
+                                  [("Lançamentos", resumo["n_rec"])]), unsafe_allow_html=True)
+    with c2:
+        st.markdown(kpi_card_html("💸", "Despesas do mês", fmt_moeda(total_desp), "red",
+                                  [("A pagar", a_pagar_txt),
+                                   ("Lançamentos pagos", resumo["n_desp"])]), unsafe_allow_html=True)
+    with c3:
+        st.markdown(kpi_card_html("⚖️", "Saldo do mês", fmt_moeda(saldo), saldo_cor,
+                                  [("Após contas a pagar", fmt_moeda(resumo["saldo_apos"]))]),
+                    unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns(3)

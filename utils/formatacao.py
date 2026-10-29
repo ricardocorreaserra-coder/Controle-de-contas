@@ -77,3 +77,27 @@ def card_html(label, value, color_class):
         <div class="card-value {color_class}">{value_safe}</div>
     </div>
     """
+
+
+def kpi_card_html(icone, label, value, color_class, sublinhas=()):
+    """
+    Cartão de totais do Dashboard: ícone + rótulo, valor grande colorido e,
+    opcionalmente, linhas extras `(rótulo, valor)` embaixo.
+    Só cores translúcidas/herdadas (tema claro e escuro — regra 8).
+    """
+    subs = "".join(
+        '<div style="display:flex;justify-content:space-between;gap:0.75rem;'
+        'font-size:0.8rem;opacity:0.8;margin-top:4px;">'
+        f"<span>{_html.escape(str(r))}</span><span>{_html.escape(str(v))}</span></div>"
+        for r, v in sublinhas
+    )
+    if subs:
+        subs = ('<div style="border-top:1px solid rgba(128,128,128,0.25);'
+                f'margin-top:10px;padding-top:6px;">{subs}</div>')
+    return (
+        '<div class="card" style="min-height:8.6rem;">'
+        f'<div class="card-label">{_html.escape(str(icone))} {_html.escape(str(label))}</div>'
+        f'<div class="card-value {color_class}">{_html.escape(str(value))}</div>'
+        f"{subs}</div>"
+    )
+

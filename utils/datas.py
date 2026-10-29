@@ -12,6 +12,18 @@ import streamlit as st
 from config import MESES_PT
 
 
+MESES_COMPLETOS = {
+    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+    7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro",
+}
+
+
+def deslocar_mes(ano: int, mes: int, delta: int) -> tuple:
+    """(ano, mes) deslocado `delta` meses (negativo = para trás). Ex.: (2026, 1, -1) → (2025, 12)."""
+    total = ano * 12 + (mes - 1) + delta
+    return total // 12, total % 12 + 1
+
+
 def fmt_mes_pt(dt: date) -> str:
     return f"{MESES_PT[dt.month]}/{str(dt.year)[2:]}"
 
@@ -89,9 +101,14 @@ def seletor_mes_ano(key_prefix: str):
     anos = [hoje.year - i for i in range(5)]
     c1, c2 = st.columns(2)
     ano = c1.selectbox("Ano", anos, index=0, key=f"{key_prefix}_ano")
+    # O mês padrão vai pelo session_state (e não por index=) para que a barra de
+    # período (utils/widgets.py::barra_periodo) possa mudar o valor sem o aviso
+    # "widget criado com valor padrão e alterado pela Session State API".
+    k_mes = f"{key_prefix}_mes"
+    if k_mes not in st.session_state:
+        st.session_state[k_mes] = hoje.month
     mes = c2.selectbox("Mês", list(MESES_PT.keys()),
-                       format_func=lambda x: MESES_PT[x],
-                       index=hoje.month - 1, key=f"{key_prefix}_mes")
+                       format_func=lambda x: MESES_PT[x], key=k_mes)
     return f"{ano}-{mes:02d}"
 
 
