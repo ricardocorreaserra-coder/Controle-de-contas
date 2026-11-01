@@ -9,11 +9,28 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 
+def _numero_br(v) -> str:
+    """'1.234,56' (valor absoluto, sem sinal e sem símbolo). Levanta erro se não for número."""
+    return "{:,.2f}".format(abs(float(v))).replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def fmt_moeda(v):
+    """'R$ 1.234,56'; negativo vem com o sinal na frente: '-R$ 1.234,56'."""
     try:
-        return "R$ {:,.2f}".format(float(v)).replace(",", "X").replace(".", ",").replace("X", ".")
+        numero = _numero_br(v)
+        negativo = float(v) < 0 and numero != "0,00"   # -0,001 não vira "-R$ 0,00"
+        return ("-R$ " if negativo else "R$ ") + numero
     except Exception:
         return "R$ 0,00"
+
+
+def fmt_numero_campo(v) -> str:
+    """'1.234,56' (ou '-1.234,56') sem o símbolo — para preencher campos de valor."""
+    try:
+        numero = _numero_br(v)
+        return ("-" if float(v) < 0 and numero != "0,00" else "") + numero
+    except Exception:
+        return "0,00"
 
 
 # B-02 · Parser de valor robusto: aceita tanto "1.234,56" (BR) quanto "1234.56" (US)
@@ -108,7 +125,8 @@ def fmt_moeda_inteiro(v):
     try:
         # ROUND_HALF_UP: 420,50 → 421 (o arredondamento padrão do Python daria 420)
         inteiro = int(Decimal(str(float(v))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-        return "R$ {:,}".format(inteiro).replace(",", ".")
+        texto = "{:,}".format(abs(inteiro)).replace(",", ".")
+        return ("-R$ " if inteiro < 0 else "R$ ") + texto
     except Exception:
         return "—"
 

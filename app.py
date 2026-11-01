@@ -53,12 +53,13 @@ st.markdown('<div class="main-header"><span style="font-size:1.6rem">💰</span>
 # usuario_atual() devolve USUARIO_PADRAO e nada é exibido.
 _usuario = usuario_atual()
 if _usuario != USUARIO_PADRAO:
-    col_user, col_sair = st.columns([5, 1])
-    col_user.caption(f"👤 Conectado como **{_usuario}**")
-    if col_sair.button("Sair", use_container_width=True, key="btn_sair"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
+    # Uma linha só (também no celular — regra 22): "Conectado como X   [Sair]".
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.caption(f"👤 Conectado como **{_usuario}**")
+        if st.button("Sair", key="btn_sair", width="content"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # NAVEGAÇÃO (menu no topo)
@@ -71,8 +72,8 @@ if _usuario != USUARIO_PADRAO:
 # então o Streamlit não consegue inferir o endereço sozinho).
 _PAGINAS = [
     (dashboard, "Dashboard", "📊", "dashboard"),
-    (lancar_despesa, "Despesa", "➖", "lancar-despesa"),
-    (lancar_receita, "Receita", "➕", "lancar-receita"),
+    (lancar_despesa, "Despesa", "💸", "lancar-despesa"),
+    (lancar_receita, "Receita", "💵", "lancar-receita"),
     (lista_despesas, "Despesas", "📋", "despesas"),
     (cartao_credito, "Cartão", "💳", "cartao"),
     (conta_corrente, "Conta", "🏦", "conta-corrente"),

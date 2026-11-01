@@ -1,6 +1,7 @@
 """Aba: 💳 Cartão de Crédito — parcelas, faturas futuras, lançamento manual e configurações."""
 
 import calendar
+import html as _html
 import re
 from datetime import date
 from functools import partial
@@ -756,9 +757,15 @@ def _bloco_cartao(c: dict):
             datas.append(f"vence dia {c['dia_vencimento']}")
         st.caption(" · ".join(datas) if datas else "Datas não informadas")
 
-        st.caption("Limite usado")
-        valor = _md(fmt_moeda(c["usado"]))
-        st.markdown(f"### :red[{valor}]" if c["alerta"] else f"### {valor}")
+        # Rótulo + valor num bloco só (o "###" do markdown deixava um vão grande).
+        # Vermelho = a classe .red do app (regra 8: nada de cor fixa nova).
+        cor = " red" if c["alerta"] else ""
+        st.markdown(
+            '<div style="font-size:0.85rem;opacity:0.7;">Limite usado</div>'
+            f'<div class="card-value{cor}" style="font-size:1.75rem;line-height:1.35;">'
+            f'{_html.escape(fmt_moeda(c["usado"]))}</div>',
+            unsafe_allow_html=True,
+        )
 
         if c["tem_limite"]:
             pct = int(round(c["percentual"] * 100))

@@ -79,10 +79,12 @@ EXPECTED_HEADERS = {
 # nos dois temas para texto grande. O .main-header é autocontido (gradiente + texto branco).
 CSS = """
 <style>
+    /* Menu do topo tem ~60px de altura; o padrão do Streamlit deixa 128px (8rem) de vão. */
+    div[data-testid="stMainBlockContainer"] { padding-top: 5rem; }
     .main-header {
         background: linear-gradient(135deg, #2563eb, #1e40af);
-        color: white; padding: 1rem 1.5rem; border-radius: 10px;
-        margin-bottom: 1.5rem;
+        color: white; padding: 0.75rem 1.25rem; border-radius: 10px;
+        margin-bottom: 0.5rem;
         display: flex; align-items: center; gap: 0.5rem;
     }
     .card {

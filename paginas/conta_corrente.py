@@ -11,7 +11,7 @@ from sheets.loaders import carregar_despesas, carregar_receitas
 from logica.receitas import excluir_receita, atualizar_receita, entradas_por_conta
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
+from utils.formatacao import fmt_moeda, fmt_numero_campo, card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
     avisar,
@@ -134,7 +134,7 @@ def render():
                 with ce1:
                     valor_edit_txt = campo_valor_moeda(
                         "Valor (R$)", base_key=f"edit_rec_valor_{id_sel}",
-                        value=fmt_moeda(mov_sel["Valor"]).replace("R$ ", ""),
+                        value=fmt_numero_campo(mov_sel["Valor"]),
                     )
 
                 with st.form(f"form_editar_receita_{id_sel}"):

@@ -5,7 +5,8 @@ Nenhuma dependência de Streamlit ou Google Sheets é necessária aqui.
 
 import pytest
 
-from utils.formatacao import fmt_moeda, parse_valor, converter_data_para_exibicao, card_html
+from utils.formatacao import (fmt_moeda, fmt_moeda_inteiro, fmt_numero_campo, parse_valor,
+                              converter_data_para_exibicao, card_html)
 
 
 # ── fmt_moeda ──────────────────────────────────────────────────────────────────
@@ -22,7 +23,17 @@ class TestFmtMoeda:
         assert fmt_moeda(0) == "R$ 0,00"
 
     def test_valor_negativo(self):
-        assert fmt_moeda(-1234.5) == "R$ -1.234,50"
+        assert fmt_moeda(-1234.5) == "-R$ 1.234,50"
+
+    def test_negativo_do_dashboard(self):
+        assert fmt_moeda(-9719.98) == "-R$ 9.719,98"
+
+    def test_negativo_que_arredonda_para_zero_nao_tem_sinal(self):
+        assert fmt_moeda(-0.001) == "R$ 0,00"
+        assert fmt_moeda(-0.0) == "R$ 0,00"
+
+    def test_menor_negativo_visivel(self):
+        assert fmt_moeda(-0.01) == "-R$ 0,01"
 
     def test_valor_grande_com_milhares_multiplos(self):
         assert fmt_moeda(1234567.89) == "R$ 1.234.567,89"
@@ -42,6 +53,32 @@ class TestFmtMoeda:
 
     def test_string_vazia_retorna_zero_formatado(self):
         assert fmt_moeda("") == "R$ 0,00"
+
+
+class TestFmtMoedaInteiroENumeroCampo:
+
+    def test_inteiro_negativo(self):
+        assert fmt_moeda_inteiro(-4805.5) == "-R$ 4.806"
+        assert fmt_moeda_inteiro(-1234567) == "-R$ 1.234.567"
+
+    def test_inteiro_negativo_que_arredonda_para_zero(self):
+        assert fmt_moeda_inteiro(-0.4) == "R$ 0"
+
+    def test_numero_campo_sem_simbolo(self):
+        assert fmt_numero_campo(1234.5) == "1.234,50"
+        assert fmt_numero_campo(0) == "0,00"
+
+    def test_numero_campo_negativo_mantem_o_sinal(self):
+        assert fmt_numero_campo(-12) == "-12,00"
+        assert fmt_numero_campo(-0.001) == "0,00"
+
+    def test_numero_campo_invalido(self):
+        assert fmt_numero_campo("abc") == "0,00"
+        assert fmt_numero_campo(None) == "0,00"
+
+    def test_numero_campo_volta_pelo_parse_valor(self):
+        for v in (0, 1.5, 1234.56, -45.9, 1000000):
+            assert parse_valor(fmt_numero_campo(v)) == pytest.approx(v)
 
 
 # ── parse_valor ────────────────────────────────────────────────────────────────

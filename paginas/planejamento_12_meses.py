@@ -18,7 +18,7 @@ from logica.planejamento import (
 from logica.exportacao import gerar_excel_panorama, gerar_csv_panorama
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import proximos_12_meses, fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, parse_valor, converter_data_para_exibicao
+from utils.formatacao import fmt_moeda, fmt_numero_campo, parse_valor, converter_data_para_exibicao
 from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf, avisar
 
 # A aba "Recorrentes" tem chave própria de confirmação: a chave genérica é lida
@@ -148,7 +148,7 @@ def _bloco_edicao_planejamento(registro, meses_futuros) -> None:
         with ce1:
             valor_edit_txt = campo_valor_moeda(
                 "Valor (R$) *", base_key=f"pl_edit_valor_{id_pl}",
-                value=fmt_moeda(registro["valor"]).replace("R$ ", ""),
+                value=fmt_numero_campo(registro["valor"]),
             )
 
         # Mês: a lista de meses futuros começa no mês SEGUINTE ao atual. Um item

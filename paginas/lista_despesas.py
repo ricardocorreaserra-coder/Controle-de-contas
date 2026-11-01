@@ -14,7 +14,7 @@ from logica.despesas import (
 )
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, card_html, converter_data_para_exibicao, parse_valor
+from utils.formatacao import fmt_moeda, fmt_numero_campo, card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
     avisar,
@@ -143,7 +143,7 @@ def render():
             with ce1:
                 valor_edit_txt = campo_valor_moeda(
                     "Valor (R$)", base_key=f"edit_desp_valor_{id_excluir}",
-                    value=fmt_moeda(registro["valor"]).replace("R$ ", ""),
+                    value=fmt_numero_campo(registro["valor"]),
                 )
 
             with st.form(f"form_editar_despesa_{id_excluir}"):

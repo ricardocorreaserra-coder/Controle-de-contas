@@ -27,7 +27,7 @@ from logica.emprestimos import (
 )
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import data_iso, hoje_br
-from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
+from utils.formatacao import fmt_moeda, fmt_numero_campo, card_html, parse_valor, converter_data_para_exibicao
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor, avisar,
     botao_pdf,
@@ -121,7 +121,7 @@ def _bloco_edicao(eid: int, registro) -> None:
         with ce1:
             valor_edit_txt = campo_valor_moeda(
                 "Valor da Parcela (R$) *", base_key=f"emp_edit_valor_{eid}",
-                value=fmt_moeda(registro["valor_parcela"]).replace("R$ ", ""),
+                value=fmt_numero_campo(registro["valor_parcela"]),
             )
 
         try:
