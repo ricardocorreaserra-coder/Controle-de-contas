@@ -14,6 +14,8 @@ fallback interno (e para pré-preencher sugestões na UI).
 import calendar
 from datetime import date, datetime
 
+import pandas as pd
+
 from sheets.client import get_sheet, sheet_to_df, delete_rows_batch, append_linha_por_nome_id_unico
 from sheets.loaders import carregar_cartoes, carregar_despesas, carregar_parcelas
 from utils.datas import add_months
@@ -129,3 +131,76 @@ def excluir_cartao(cid: int):
     if not df.empty:
         delete_rows_batch(ws, df[df["id"].astype(str) == str(cid)].index.tolist())
     carregar_cartoes.clear()
+
+
+# ── Etapa 5 do redesenho · limite usado por cartão ──────────────────────────
+
+# A partir desta fração do limite, o bloco do cartão fica em alerta (vermelho).
+LIMITE_ALERTA = 0.80
+
+
+def _dia_do_mes(v):
+    try:
+        d = int(float(v))
+        return d if 1 <= d <= 31 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def resumo_limites_cartoes(df_cartoes, df_parcelas) -> dict:
+    """
+    Limite usado de cada cartão = soma das parcelas PENDENTES dele. Só LÊ dados:
+    não grava nada e não altera nenhum outro número do app.
+
+    `df_parcelas` deve vir de `_preparar_df_parcelas` (a página de Cartão), que
+    já completa o cartão da parcela com o da despesa de origem.
+
+    Retorna {"cartoes": [...], "sem_cartao_valor": float, "sem_cartao_n": int}.
+    Cada item de "cartoes": nome, limite, usado, n_parcelas, disponivel
+    (nunca negativo), percentual (fração 0..N, ou None sem limite), tem_limite,
+    alerta (>= 80%), estourado (usado > limite), dia_fechamento, dia_vencimento.
+    "sem_cartao_*" = parcelas pendentes cujo cartão não está cadastrado.
+    """
+    usado_por, n_por = {}, {}
+    if (df_parcelas is not None and not df_parcelas.empty
+            and {"cartao", "status", "valor"} <= set(df_parcelas.columns)):
+        status = df_parcelas["status"].astype(str).str.strip().str.lower()
+        pend = df_parcelas[(status == "pendente").astype(bool)]
+        valores = pd.to_numeric(pend["valor"], errors="coerce").fillna(0.0)
+        nomes = pend["cartao"].fillna("").astype(str).str.strip()
+        for nome, v in zip(nomes, valores):
+            usado_por[nome] = usado_por.get(nome, 0.0) + float(v)
+            n_por[nome] = n_por.get(nome, 0) + 1
+
+    cartoes, cadastrados = [], set()
+    if df_cartoes is not None and not df_cartoes.empty and "nome" in df_cartoes.columns:
+        for _, row in df_cartoes.iterrows():
+            nome = str(row.get("nome", "")).strip()
+            if not nome or nome in cadastrados:
+                continue
+            cadastrados.add(nome)
+            lim = pd.to_numeric(row.get("limite", 0), errors="coerce")
+            limite = float(lim) if pd.notna(lim) and lim > 0 else 0.0
+            usado = round(usado_por.get(nome, 0.0), 2)
+            tem_limite = limite > 0
+            frac = (usado / limite) if tem_limite else None
+            cartoes.append({
+                "nome": nome,
+                "limite": limite,
+                "usado": usado,
+                "n_parcelas": n_por.get(nome, 0),
+                "disponivel": round(max(limite - usado, 0.0), 2) if tem_limite else None,
+                "percentual": frac,
+                "tem_limite": tem_limite,
+                "alerta": bool(tem_limite and frac >= LIMITE_ALERTA),
+                "estourado": bool(tem_limite and usado > limite),
+                "dia_fechamento": _dia_do_mes(row.get("dia_fechamento")),
+                "dia_vencimento": _dia_do_mes(row.get("dia_vencimento")),
+            })
+
+    orfas = [n for n in usado_por if n not in cadastrados]
+    return {
+        "cartoes": cartoes,
+        "sem_cartao_valor": round(sum(usado_por[n] for n in orfas), 2),
+        "sem_cartao_n": sum(n_por[n] for n in orfas),
+    }

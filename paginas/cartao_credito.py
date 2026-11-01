@@ -10,7 +10,7 @@ import plotly.express as px
 import streamlit as st
 
 from sheets.loaders import carregar_parcelas, carregar_despesas, carregar_cartoes, obter_nomes_cartoes
-from logica.cartoes import salvar_cartao, excluir_cartao, cartao_tem_vinculos
+from logica.cartoes import salvar_cartao, excluir_cartao, cartao_tem_vinculos, resumo_limites_cartoes
 from logica.parcelas import (
     salvar_parcela_manual, atualizar_parcela, baixar_fatura_mes, atualizar_vencimento_parcela,
     alterar_lancamento_parcela, resumo_compra_parcelas, excluir_compra_parcelas, corrigir_total_parcelas,
@@ -734,15 +734,81 @@ def _sub_fechamentos():
         st.info("💡 Clique em um fechamento na tabela acima para excluí-lo.")
 
 
-def render():
-    sub_cc_list, sub_cc_faturas, sub_cc_fech, sub_cc_lanc, sub_cc_config = st.tabs([
-        "📊 Parcelas", "📅 Faturas Futuras", "🗓️ Fechamentos", "➕ Lançar Histórico", "⚙️ Cartões & Configurações"
-    ])
+def _md(texto) -> str:
+    """Escapa o texto para o markdown do Streamlit (o '$' viraria fórmula)."""
+    t = str(texto)
+    for ch in ("\\", "$", "*", "_", "`", "[", "]", "~", ":"):
+        t = t.replace(ch, "\\" + ch)
+    return t
 
+
+_COLUNAS_BLOCOS = 3
+
+
+def _bloco_cartao(c: dict):
+    """Um cartão em um bloco com borda: limite usado, barra, disponível e datas."""
+    with st.container(border=True):
+        st.markdown(f"**💳 {_md(c['nome'])}**")
+        datas = []
+        if c["dia_fechamento"]:
+            datas.append(f"fecha dia {c['dia_fechamento']}")
+        if c["dia_vencimento"]:
+            datas.append(f"vence dia {c['dia_vencimento']}")
+        st.caption(" · ".join(datas) if datas else "Datas não informadas")
+
+        st.caption("Limite usado")
+        valor = _md(fmt_moeda(c["usado"]))
+        st.markdown(f"### :red[{valor}]" if c["alerta"] else f"### {valor}")
+
+        if c["tem_limite"]:
+            pct = int(round(c["percentual"] * 100))
+            st.progress(min(max(c["percentual"], 0.0), 1.0),
+                        text=_md(f"{pct}% usado · limite {fmt_moeda(c['limite'])}"))
+            if c["estourado"]:
+                st.markdown(":red[Acima do limite]")
+            elif c["alerta"]:
+                st.markdown(":red[Perto do limite]")
+            st.markdown(f"Disponível: **{_md(fmt_moeda(c['disponivel']))}**")
+        else:
+            st.caption("Limite não cadastrado")
+            st.markdown("Disponível: **—**")
+
+
+def _blocos_cartoes(df_c: pd.DataFrame, df_p2: pd.DataFrame):
+    """Faixa de blocos no topo da tela: um por cartão cadastrado."""
+    st.markdown("##### Limite dos cartões")
+    try:
+        resumo = resumo_limites_cartoes(df_c, df_p2)
+    except Exception as e:
+        st.warning(f"Não foi possível calcular os limites agora: {e}")
+        return
+    cartoes = resumo["cartoes"]
+    if not cartoes:
+        st.info("Nenhum cartão cadastrado. Cadastre o primeiro em ⚙️ Cartões & Configurações.")
+        return
+    for i in range(0, len(cartoes), _COLUNAS_BLOCOS):
+        cols = st.columns(_COLUNAS_BLOCOS)
+        for col, c in zip(cols, cartoes[i:i + _COLUNAS_BLOCOS]):
+            with col:
+                _bloco_cartao(c)
+    if resumo["sem_cartao_n"]:
+        st.caption(
+            f"Há {resumo['sem_cartao_n']} parcela(s) pendente(s) de cartão não cadastrado, "
+            f"somando {fmt_moeda(resumo['sem_cartao_valor'])}, que não entram nos blocos acima."
+        )
+
+
+def render():
     df_p = carregar_parcelas()
     df_d = carregar_despesas()
     hoje = hoje_str()
     df_p2 = _preparar_df_parcelas(df_p, df_d)
+
+    _blocos_cartoes(carregar_cartoes(), df_p2)
+
+    sub_cc_list, sub_cc_faturas, sub_cc_fech, sub_cc_lanc, sub_cc_config = st.tabs([
+        "📊 Parcelas", "📅 Faturas Futuras", "🗓️ Fechamentos", "➕ Lançar Histórico", "⚙️ Cartões & Configurações"
+    ])
 
     with sub_cc_list:
         _sub_parcelas(df_p, df_p2, hoje)
