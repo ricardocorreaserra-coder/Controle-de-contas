@@ -97,7 +97,7 @@ def card_html(label, value, color_class):
     """
 
 
-def kpi_card_html(icone, label, value, color_class, sublinhas=()):
+def kpi_card_html(icone, label, value, color_class, sublinhas=(), altura_min="8.6rem"):
     """
     Cartão de totais do Dashboard: ícone + rótulo, valor grande colorido e,
     opcionalmente, linhas extras `(rótulo, valor)` embaixo.
@@ -113,10 +113,35 @@ def kpi_card_html(icone, label, value, color_class, sublinhas=()):
         subs = ('<div style="border-top:1px solid rgba(128,128,128,0.25);'
                 f'margin-top:10px;padding-top:6px;">{subs}</div>')
     return (
-        '<div class="card" style="min-height:8.6rem;">'
+        f'<div class="card" style="min-height:{_html.escape(str(altura_min))};">'
         f'<div class="card-label">{_html.escape(str(icone))} {_html.escape(str(label))}</div>'
         f'<div class="card-value {color_class}">{_html.escape(str(value))}</div>'
         f"{subs}</div>"
+    )
+
+
+def fmt_percentual(parte, total) -> str:
+    """'31,2%' — parte/total com uma casa decimal e vírgula. Total zero/inválido → '0,0%'."""
+    try:
+        parte, total = float(parte), float(total)
+        if total <= 0:
+            return "0,0%"
+        return "{:.1f}%".format(parte / total * 100).replace(".", ",")
+    except (TypeError, ValueError):
+        return "0,0%"
+
+
+def estado_vazio_html(icone, titulo, frase) -> str:
+    """
+    Miolo do estado vazio padrão (ícone + título + frase, centralizados). O botão é
+    desenhado à parte por `utils.widgets.estado_vazio`. Só herda cor/fundo (regra 8).
+    """
+    return (
+        '<div style="text-align:center;padding:1rem 0.5rem 0.5rem 0.5rem;">'
+        f'<div style="font-size:2rem;line-height:1.2;">{_html.escape(str(icone))}</div>'
+        f'<div style="font-size:1.1rem;font-weight:600;margin-top:0.4rem;">{_html.escape(str(titulo))}</div>'
+        '<div style="font-size:0.9rem;opacity:0.75;max-width:28rem;margin:0.35rem auto 0.5rem auto;">'
+        f'{_html.escape(str(frase))}</div></div>'
     )
 
 

@@ -11,10 +11,10 @@ from sheets.loaders import carregar_despesas, carregar_receitas
 from logica.receitas import excluir_receita, atualizar_receita, entradas_por_conta
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, fmt_numero_campo, card_html, converter_data_para_exibicao, parse_valor
+from utils.formatacao import fmt_moeda, fmt_numero_campo, kpi_card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
-    avisar,
+    avisar, estado_vazio,
 )
 
 
@@ -45,12 +45,21 @@ def render():
     total_rec_cc  = float(rec_cc["valor"].sum())  if not rec_cc.empty  else 0.0
     total_desp_cc = float(desp_cc["valor"].sum()) if not desp_cc.empty else 0.0
     saldo_cc      = total_rec_cc - total_desp_cc
-    saldo_cor_cc  = "green" if saldo_cc >= 0 else "red"
+    saldo_cor_cc  = "blue" if saldo_cc >= 0 else "red"   # mesmas cores do Dashboard
 
     m1, m2, m3 = st.columns(3)
-    with m1: st.markdown(card_html("Total receitas",  fmt_moeda(total_rec_cc),  "green"),      unsafe_allow_html=True)
-    with m2: st.markdown(card_html("Total despesas",  fmt_moeda(total_desp_cc), "red"),        unsafe_allow_html=True)
-    with m3: st.markdown(card_html("Saldo acumulado", fmt_moeda(saldo_cc),      saldo_cor_cc), unsafe_allow_html=True)
+    with m1:
+        st.markdown(kpi_card_html("💵", "Total receitas", fmt_moeda(total_rec_cc), "green",
+                                  [("Lançamentos", str(len(rec_cc)))], altura_min="7rem"),
+                    unsafe_allow_html=True)
+    with m2:
+        st.markdown(kpi_card_html("💸", "Total despesas", fmt_moeda(total_desp_cc), "red",
+                                  [("Lançamentos", str(len(desp_cc)))], altura_min="7rem"),
+                    unsafe_allow_html=True)
+    with m3:
+        st.markdown(kpi_card_html("⚖️", "Saldo acumulado", fmt_moeda(saldo_cc), saldo_cor_cc,
+                                  [("Movimentos", str(len(rec_cc) + len(desp_cc)))], altura_min="7rem"),
+                    unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Entradas por conta: cada receita grava a conta em que entrou, mas o saldo
@@ -98,7 +107,9 @@ def render():
         })
 
     if not extrato:
-        st.info("Nenhum movimento para o período selecionado.")
+        estado_vazio("🏦", f"Nenhum movimento em {fmt_mes_str_pt(mes_cc)}",
+                     "Lance uma receita ou uma despesa para ver o extrato deste mês.",
+                     "Lançar receita", "lancar-receita", chave="vazio_conta_corrente")
         return
 
     df_extrato = pd.DataFrame(extrato)

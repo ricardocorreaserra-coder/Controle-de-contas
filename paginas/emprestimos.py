@@ -27,10 +27,10 @@ from logica.emprestimos import (
 )
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import data_iso, hoje_br
-from utils.formatacao import fmt_moeda, fmt_numero_campo, card_html, parse_valor, converter_data_para_exibicao
+from utils.formatacao import fmt_moeda, fmt_numero_campo, kpi_card_html, parse_valor, converter_data_para_exibicao
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor, avisar,
-    botao_pdf,
+    botao_pdf, estado_vazio,
 )
 
 # Confirmações da aba "Meus Empréstimos" (editar e excluir). Ficam numa chave
@@ -178,7 +178,10 @@ def _sub_lista():
     exibir_mensagem_pendente(_CHAVE_MSG_EDICAO)
     df_e = carregar_emprestimos()
     if df_e.empty:
-        st.info("Nenhum empréstimo cadastrado ainda.")
+        # Sem botão: o destino é a aba "Novo Empréstimo", e o Streamlit não troca de aba por código.
+        estado_vazio("🏛️", "Nenhum empréstimo cadastrado",
+                     "Use a aba ➕ Novo Empréstimo, aqui ao lado, para cadastrar o primeiro e "
+                     "acompanhar parcelas e total devido.")
         return
 
     df = _preparar_df(df_e)
@@ -188,9 +191,9 @@ def _sub_lista():
     quitados     = int((df["parcelas_restantes"] <= 0).sum())
 
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(card_html("Total devido (todos)", fmt_moeda(total_devido), "orange"), unsafe_allow_html=True)
-    with c2: st.markdown(card_html("Empréstimos ativos",   f"{ativos}",              "blue"),   unsafe_allow_html=True)
-    with c3: st.markdown(card_html("Quitados",             f"{quitados}",            "green"),  unsafe_allow_html=True)
+    with c1: st.markdown(kpi_card_html("🏛️", "Total devido (todos)", fmt_moeda(total_devido), "orange", altura_min="5.5rem"), unsafe_allow_html=True)
+    with c2: st.markdown(kpi_card_html("📈", "Empréstimos ativos",   f"{ativos}",              "blue",   altura_min="5.5rem"), unsafe_allow_html=True)
+    with c3: st.markdown(kpi_card_html("✅", "Quitados",             f"{quitados}",            "green",  altura_min="5.5rem"), unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     df_show = df[["id", "descricao", "banco", "valor_parcela", "parcelas_restantes",

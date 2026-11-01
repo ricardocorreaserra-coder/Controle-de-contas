@@ -8,7 +8,8 @@ o campo de valor monetário com máscara de centavos.
 import streamlit as st
 
 from utils.datas import MESES_COMPLETOS, deslocar_mes, hoje_br, seletor_mes_ano
-from utils.formatacao import formatar_input_moeda
+from utils.formatacao import estado_vazio_html, formatar_input_moeda
+from utils.navegacao import ir_para
 
 
 def _on_blur_valor_moeda(key: str):
@@ -234,3 +235,17 @@ def barra_periodo(key_prefix: str) -> str:
                   args=(hoje.year, hoje.month), disabled=com_mes_atual)
     return periodo
 
+
+
+def estado_vazio(icone, titulo, frase, botao=None, destino=None, chave="estado_vazio"):
+    """
+    Estado vazio padrão das telas: bloco com borda, ícone, título, uma frase e (opcional)
+    UM botão que leva a outra tela (`destino` = url_path da página, ex. "lancar-despesa").
+    Sem `botao`/`destino` mostra só o texto (ex.: Empréstimos, onde o destino é uma aba).
+    """
+    with st.container(border=True):
+        st.markdown(estado_vazio_html(icone, titulo, frase), unsafe_allow_html=True)
+        if botao and destino:
+            with st.container(horizontal=True, horizontal_alignment="center"):
+                if st.button(botao, key=chave, type="primary", width="content"):
+                    ir_para(destino)

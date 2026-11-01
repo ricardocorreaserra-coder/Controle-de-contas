@@ -14,10 +14,12 @@ from logica.despesas import (
 )
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, fmt_numero_campo, card_html, converter_data_para_exibicao, parse_valor
+from utils.formatacao import (
+    fmt_moeda, fmt_numero_campo, fmt_percentual, kpi_card_html, converter_data_para_exibicao, parse_valor,
+)
 from utils.widgets import (
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
-    avisar,
+    avisar, estado_vazio,
 )
 
 
@@ -40,7 +42,9 @@ def render():
 
     df_d = carregar_despesas()
     if df_d.empty:
-        st.info("Nenhuma despesa cadastrada.")
+        estado_vazio("💸", "Nenhuma despesa cadastrada",
+                     "Lance a primeira despesa para acompanhar seus gastos por aqui.",
+                     "Lançar despesa", "lancar-despesa", chave="vazio_lista_despesas")
         return
 
     df_d["valor"] = pd.to_numeric(df_d["valor"], errors='coerce').fillna(0.0)
@@ -74,13 +78,25 @@ def render():
     total = float(df_filtrado["valor"].sum()) if not df_filtrado.empty else 0.0
     cc_v  = float(df_filtrado[df_filtrado["pagamento"] == "Cartão de crédito"]["valor"].sum()) if not df_filtrado.empty else 0.0
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(card_html("Total",   fmt_moeda(total),        "blue"),  unsafe_allow_html=True)
-    with c2: st.markdown(card_html("Crédito", fmt_moeda(cc_v),         "blue"),  unsafe_allow_html=True)
-    with c3: st.markdown(card_html("Outros",  fmt_moeda(total - cc_v), "green"), unsafe_allow_html=True)
+    with c1:
+        st.markdown(kpi_card_html("💸", "Total do período", fmt_moeda(total), "red",
+                                  [("Lançamentos", str(len(df_filtrado)))], altura_min="7rem"),
+                    unsafe_allow_html=True)
+    with c2:
+        st.markdown(kpi_card_html("💳", "No cartão de crédito", fmt_moeda(cc_v), "blue",
+                                  [("% do total", fmt_percentual(cc_v, total))], altura_min="7rem"),
+                    unsafe_allow_html=True)
+    with c3:
+        st.markdown(kpi_card_html("💵", "Outras formas", fmt_moeda(total - cc_v), "green",
+                                  [("% do total", fmt_percentual(total - cc_v, total))], altura_min="7rem"),
+                    unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     if df_filtrado.empty:
-        st.info("Nenhuma despesa no período selecionado.")
+        estado_vazio("💸", "Nenhuma despesa encontrada",
+                     f"Nada em {fmt_mes_str_pt(fmes)} com os filtros escolhidos. "
+                     "Troque o mês ou os filtros, ou lance uma nova despesa.",
+                     "Lançar despesa", "lancar-despesa", chave="vazio_lista_periodo")
         return
 
     colunas = ["id", "descricao", "valor", "data", "local",

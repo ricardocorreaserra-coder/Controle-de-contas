@@ -12,6 +12,7 @@ import streamlit as st
 
 from config import CSS
 from auth import verificar_autenticacao
+from utils.navegacao import registrar_paginas
 from utils.sessao import usuario_atual, USUARIO_PADRAO
 from utils.widgets import exibir_toasts_pendentes
 from paginas import (
@@ -81,14 +82,15 @@ _PAGINAS = [
     (emprestimos, "Empréstimos", "🏛️", "emprestimos"),
 ]
 
-pagina_atual = st.navigation(
-    [
-        st.Page(modulo.render, title=titulo, icon=icone, url_path=caminho,
-                default=(caminho == "dashboard"))
-        for modulo, titulo, icone, caminho in _PAGINAS
-    ],
-    position="top",
-)
+_objetos_paginas = {
+    caminho: st.Page(modulo.render, title=titulo, icon=icone, url_path=caminho,
+                     default=(caminho == "dashboard"))
+    for modulo, titulo, icone, caminho in _PAGINAS
+}
+# Permite que as telas levem a outra (botão do estado vazio) — ver utils/navegacao.py.
+registrar_paginas(_objetos_paginas)
+
+pagina_atual = st.navigation(list(_objetos_paginas.values()), position="top")
 # Avisos flutuantes das movimentações feitas na execução anterior (lançar/alterar/
 # excluir) — aparecem em qualquer página, mesmo com a tela rolada.
 exibir_toasts_pendentes()
