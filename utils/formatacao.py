@@ -145,6 +145,20 @@ def estado_vazio_html(icone, titulo, frase) -> str:
     )
 
 
+# Grade dos 3 cartões de totais: todos da altura do mais alto (antes, com st.columns, cada
+# cartão tinha a altura do próprio conteúdo). No celular empilha em uma coluna.
+_CSS_KPI_GRID = (
+    "<style>.kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;"
+    "align-items:stretch;}"
+    "@media (max-width:640px){.kpi-grid{grid-template-columns:1fr;}}</style>"
+)
+
+
+def kpi_grid_html(cartoes) -> str:
+    """Junta cartões de `kpi_card_html` numa grade de 3 colunas com a mesma altura."""
+    return _CSS_KPI_GRID + '<div class="kpi-grid">' + "".join(cartoes) + "</div>"
+
+
 def fmt_moeda_inteiro(v):
     """'R$ 4.805' (sem centavos) — para blocos estreitos como a linha do tempo."""
     try:
@@ -170,7 +184,7 @@ _CSS_LINHA_DO_TEMPO = """
 .tl-fut{border:1px dashed rgba(128,128,128,0.65);background:transparent;}
 .tl-fut .tl-valor{opacity:0.85;}
 .tl-sel{border:1.5px solid rgba(220,38,38,0.75);background:rgba(220,38,38,0.12);}
-.tl-sel .tl-mes,.tl-sel .tl-valor{color:#dc2626;opacity:1;}
+.tl-sel .tl-mes,.tl-sel .tl-valor{color:#dc2626;color:light-dark(#dc2626,#f87171);opacity:1;}
 .tl-sel.tl-fut{border-style:dashed;}
 .tl-legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:0.75rem;opacity:0.75;margin-bottom:14px;}
 .tl-sw{display:inline-block;width:14px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px;}

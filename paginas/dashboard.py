@@ -2,18 +2,22 @@
 
 from functools import partial
 
+import html as _html
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 from sheets.loaders import carregar_despesas, carregar_receitas
-from logica.dashboard import resumo_mes, janela_meses, linha_do_tempo, historico_meses, participacao
+from logica.dashboard import (
+    resumo_mes, janela_meses, linha_do_tempo, historico_meses, participacao, agrupar_pequenas,
+)
 from logica.despesas import despesa_esta_pendente
 from logica.planejamento import despesas_planejadas_por_mes
 from logica.relatorios import pdf_dashboard
 from utils.datas import fmt_mes_str_pt, hoje_br
-from utils.formatacao import fmt_moeda, kpi_card_html, linha_do_tempo_html
+from utils.formatacao import fmt_moeda, kpi_card_html, kpi_grid_html, linha_do_tempo_html
 from utils.widgets import botao_pdf, barra_periodo
 
 
@@ -28,12 +32,21 @@ def _rosquinha(grp: pd.DataFrame, coluna_nomes: str, cores):
     Plotly abrir a margem sozinho se algum rótulo ainda ficar para fora.
     NÃO passar `template=` aqui — o padrão do Streamlit já segue o tema.
     """
+    # "Detalhe" (só na fatia "Demais") lista as categorias agrupadas no hover.
+    tem_detalhe = "Detalhe" in grp.columns
+    if tem_detalhe:
+        grp = grp.copy()
+        grp["Detalhe"] = grp["Detalhe"].fillna("").map(
+            lambda t: "<br>" + _html.escape(str(t)) if str(t) else "")
     fig = px.pie(grp, values="Valor", names=coluna_nomes, hole=0.4, height=300,
-                 color_discrete_sequence=cores)
+                 color=coluna_nomes, color_discrete_sequence=cores,
+                 color_discrete_map={"Demais": "#9ca3af", "Demais categorias": "#9ca3af"},
+                 custom_data=["Detalhe"] if tem_detalhe else None)
     fig.update_traces(
         textinfo="percent", textposition="auto",
         insidetextorientation="horizontal", automargin=True,
-        hovertemplate="<b>%{label}</b><br>Valor: R$ %{value:,.2f}<extra></extra>",
+        hovertemplate="<b>%{label}</b><br>Valor: R$ %{value:,.2f}"
+                      + ("%{customdata[0]}" if tem_detalhe else "") + "<extra></extra>",
     )
     fig.update_layout(separators=",.", margin=dict(t=10, b=10, l=10, r=10),
                       legend=dict(orientation="h", y=-0.15))
@@ -83,18 +96,14 @@ def render():
     if resumo["n_a_pagar"]:
         a_pagar_txt += f" ({resumo['n_a_pagar']})"
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(kpi_card_html("💵", "Receitas do mês", fmt_moeda(total_rec), "green",
-                                  [("Lançamentos", resumo["n_rec"])]), unsafe_allow_html=True)
-    with c2:
-        st.markdown(kpi_card_html("💸", "Despesas do mês", fmt_moeda(total_desp), "red",
-                                  [("A pagar", a_pagar_txt),
-                                   ("Lançamentos pagos", resumo["n_desp"])]), unsafe_allow_html=True)
-    with c3:
-        st.markdown(kpi_card_html("⚖️", "Saldo do mês", fmt_moeda(saldo), saldo_cor,
-                                  [("Após contas a pagar", fmt_moeda(resumo["saldo_apos"]))]),
-                    unsafe_allow_html=True)
+    st.markdown(kpi_grid_html([
+        kpi_card_html("💵", "Receitas do mês", fmt_moeda(total_rec), "green",
+                      [("Lançamentos", resumo["n_rec"])]),
+        kpi_card_html("💸", "Despesas do mês", fmt_moeda(total_desp), "red",
+                      [("A pagar", a_pagar_txt), ("Lançamentos pagos", resumo["n_desp"])]),
+        kpi_card_html("⚖️", "Saldo do mês", fmt_moeda(saldo), saldo_cor,
+                      [("Após contas a pagar", fmt_moeda(resumo["saldo_apos"]))]),
+    ]), unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Histórico: 6 meses terminando no mês selecionado (nunca depois do mês atual —
@@ -126,8 +135,13 @@ def render():
             if not desp_mes.empty and "categoria" in desp_mes.columns:
                 grp = desp_mes.groupby("categoria")["valor"].sum().reset_index()
                 grp.columns = ["Categoria", "Valor"]
-                fig2 = _rosquinha(grp, "Categoria", px.colors.qualitative.Set2)
-                st.plotly_chart(fig2, width="stretch")
+                # fatias abaixo de 3% viram "Demais" (o hover mostra quais são)
+                grp = agrupar_pequenas(grp, "Categoria", "Valor")
+                if grp.empty:
+                    st.info("Sem dados para o período.")
+                else:
+                    fig2 = _rosquinha(grp, "Categoria", px.colors.qualitative.Set2)
+                    st.plotly_chart(fig2, width="stretch")
             else:
                 st.info("Sem dados para o período.")
 

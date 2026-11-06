@@ -125,3 +125,49 @@ def participacao(df, coluna: str, vazio: str = "Não informado") -> pd.DataFrame
     g["Percentual"] = g["Valor"] / total * 100 if total else 0.0
     return g[colunas]
 
+
+
+# Fatias abaixo desta fração (em %) do total são agrupadas em "Demais" na rosquinha.
+LIMITE_DEMAIS_PCT = 3.0
+
+
+def agrupar_pequenas(df, coluna_nome: str = "Categoria", coluna_valor: str = "Valor",
+                     limite_pct: float = LIMITE_DEMAIS_PCT, rotulo: str = "Demais") -> pd.DataFrame:
+    """
+    Prepara os dados da rosquinha de categorias: soma por nome, da maior para a menor
+    fatia, e junta numa linha só ("Demais", sempre por último) as fatias abaixo de
+    `limite_pct` % do total. O total NUNCA muda.
+
+    Só agrupa quando há pelo menos 2 fatias pequenas (uma só fica com o nome dela) e
+    pelo menos 1 fatia grande (senão "Demais" seria o gráfico inteiro). Texto em branco
+    vira "Sem categoria"; valores zerados/negativos/inválidos são ignorados.
+
+    Colunas devolvidas: `coluna_nome`, `coluna_valor` e "Detalhe" — texto para o hover
+    ("<br>Inclui: Pets, Seguros"), vazio nas fatias que não são "Demais".
+    """
+    colunas = [coluna_nome, coluna_valor, "Detalhe"]
+    if df is None or df.empty or coluna_nome not in df.columns or coluna_valor not in df.columns:
+        return pd.DataFrame(columns=colunas)
+    d = pd.DataFrame({
+        coluna_nome: df[coluna_nome].fillna("").astype(str).str.strip().replace("", "Sem categoria"),
+        coluna_valor: pd.to_numeric(df[coluna_valor], errors="coerce").fillna(0.0),
+    })
+    g = d.groupby(coluna_nome, as_index=False)[coluna_valor].sum()
+    g = g[g[coluna_valor] > 0].sort_values([coluna_valor, coluna_nome], ascending=[False, True]).reset_index(drop=True)
+    g["Detalhe"] = ""
+    total = float(g[coluna_valor].sum())
+    if total <= 0:
+        return g[colunas]
+
+    pequena = g[coluna_valor] / total * 100 < limite_pct
+    if int(pequena.sum()) < 2 or int((~pequena).sum()) < 1:
+        return g[colunas]
+
+    grandes = g[~pequena]
+    pequenas = g[pequena]
+    nome = rotulo if rotulo not in set(grandes[coluna_nome]) else f"{rotulo} categorias"
+    nomes = list(pequenas[coluna_nome])
+    mostrar = ", ".join(nomes[:8]) + (f" e mais {len(nomes) - 8}" if len(nomes) > 8 else "")
+    demais = pd.DataFrame([{coluna_nome: nome, coluna_valor: float(pequenas[coluna_valor].sum()),
+                            "Detalhe": f"Inclui: {mostrar}"}])
+    return pd.concat([grandes, demais], ignore_index=True)[colunas]
