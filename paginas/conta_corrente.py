@@ -123,7 +123,7 @@ def render():
                        + [Secao("", df_extrato.copy())]),
         f"conta_corrente_{mes_cc}.pdf", key="pdf_conta_corrente",
     )
-    event_cc = st.dataframe(df_extrato, use_container_width=True, hide_index=True,
+    event_cc = st.dataframe(df_extrato, width="stretch", hide_index=True,
                             on_select="rerun", selection_mode="single-row")
 
     st.markdown("#### Ações do Lançamento")
@@ -165,7 +165,7 @@ def render():
                     obs_edit = st.text_input("Observação", value=str(mov_sel.get("Observação", "")))
 
                     salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",
-                                                           use_container_width=True)
+                                                           width="stretch")
 
                 if salvar_edicao:
                     erros_edit = []
@@ -198,7 +198,7 @@ def render():
                 key=f"confirmar_excl_rec_{id_sel}"
             )
             if confirmar_r:
-                if st.button("🗑 Excluir receita", type="primary", use_container_width=True, key="btn_excl_rec"):
+                if st.button("🗑 Excluir receita", type="primary", width="stretch", key="btn_excl_rec"):
                     try:
                         excluir_receita(id_sel)
                         avisar(f"Receita #{id_sel} excluída: {desc_sel} ({val_sel})", tipo="excluido")
@@ -206,7 +206,7 @@ def render():
                     except Exception as e:
                         st.error(f"Erro ao excluir: {e}")
             else:
-                st.button("🗑 Excluir receita", type="primary", use_container_width=True,
+                st.button("🗑 Excluir receita", type="primary", width="stretch",
                           disabled=True, key="btn_excl_rec_dis")
         else:
             st.info(f"ℹ️ O lançamento selecionado é uma **Despesa** (#{id_sel}). Para excluí-la, utilize a aba **☰ Despesas**.")

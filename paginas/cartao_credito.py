@@ -131,7 +131,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
         f"parcelas_cartao_{hoje_br().strftime('%Y%m%d')}.pdf", key="pdf_parcelas",
     )
 
-    event_p = st.dataframe(df_show, use_container_width=True, hide_index=True,
+    event_p = st.dataframe(df_show, width="stretch", hide_index=True,
                            on_select="rerun", selection_mode="single-row",
                            key=f"df_parcelas_list_{st.session_state.get('_ver_df_parcelas', 0)}")
 
@@ -148,14 +148,14 @@ def _sub_parcelas(df_p, df_p2, hoje):
         ba2, ba3 = st.columns(2)
         # Baixa e estorno de parcela individual não precisam de confirmação
         # pois são reversíveis (estorno disponível)
-        if ba2.button("✔ Dar baixa (Marcar como Pago)", type="primary", use_container_width=True, key="btn_pago_p"):
+        if ba2.button("✔ Dar baixa (Marcar como Pago)", type="primary", width="stretch", key="btn_pago_p"):
             try:
                 atualizar_parcela(pid_acao, "pago")
                 avisar(f"Parcela #{pid_acao} marcada como paga: {desc_p} ({val_p})", chave=_MSG_PARCELAS)
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro: {e}")
-        if ba3.button("↩ Estornar (Voltar para Pendente)", use_container_width=True, key="btn_pendente_p"):
+        if ba3.button("↩ Estornar (Voltar para Pendente)", width="stretch", key="btn_pendente_p"):
             try:
                 atualizar_parcela(pid_acao, "pendente")
                 avisar(f"Parcela #{pid_acao} estornada para pendente: {desc_p} ({val_p})",
@@ -183,7 +183,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
                                      min_value=date(2000, 1, 1), max_value=date(2100, 12, 31),
                                      format="DD/MM/YYYY", key=f"corrigir_venc_data_{pid_acao}")
         cc_v2.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        if cc_v2.button("Corrigir", use_container_width=True, key="btn_corrigir_venc"):
+        if cc_v2.button("Corrigir", width="stretch", key="btn_corrigir_venc"):
             try:
                 atualizar_vencimento_parcela(pid_acao, novo_venc)
                 avisar(f"Vencimento da parcela #{pid_acao} corrigido para {novo_venc.strftime('%d/%m/%Y')}: "
@@ -215,7 +215,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
         btn_baixa_lote = st.button(
             "💳 Baixar fatura completa do mês",
             type="secondary",
-            use_container_width=True,
+            width="stretch",
             key="btn_baixa_lote",
             disabled=not confirmar_fat
         )
@@ -278,7 +278,7 @@ def _form_alterar_lancamento(row, pid_acao):
                 help="'Toda a compra' altera descrição, cartão e data da compra em todas as parcelas dela "
                      "(pagas e pendentes) e o valor somente nas parcelas pendentes.",
             )
-            salvar_alt = st.form_submit_button("💾 Salvar alterações", type="primary", use_container_width=True)
+            salvar_alt = st.form_submit_button("💾 Salvar alterações", type="primary", width="stretch")
 
         if salvar_alt:
             escopo = "compra" if escopo_label == "Toda a compra" else "parcela"
@@ -332,7 +332,7 @@ def _form_gerenciar_compra(df_p, pid_acao):
                 f"Serão **criadas** as parcelas {resumo['num_max'] + 1} a {novo_total}, mês a mês depois da última, "
                 "com o mesmo valor e o mesmo dia de vencimento."
             )
-        if st.button("Aplicar novo total", use_container_width=True, key=f"gc_btn_total_{pid_acao}",
+        if st.button("Aplicar novo total", width="stretch", key=f"gc_btn_total_{pid_acao}",
                      disabled=(novo_total == resumo["total"] and novo_total == resumo["num_max"])):
             try:
                 removidas, criadas = corrigir_total_parcelas(pid_acao, novo_total)
@@ -354,7 +354,7 @@ def _form_gerenciar_compra(df_p, pid_acao):
             f"Confirmo a exclusão de **{resumo['descricao']}** e de suas {resumo['n']} parcela(s){aviso_pagas}",
             key=f"gc_confirma_{pid_acao}",
         )
-        if st.button("🗑 Excluir compra", type="primary", use_container_width=True,
+        if st.button("🗑 Excluir compra", type="primary", width="stretch",
                      key=f"gc_btn_excluir_{pid_acao}", disabled=not confirmar):
             try:
                 n = excluir_compra_parcelas(pid_acao)
@@ -388,7 +388,7 @@ def _sub_faturas_futuras(df_p, df_p2):
     df_pivot_fmt = df_pivot.copy()
     for col in df_pivot_fmt.columns:
         df_pivot_fmt[col] = df_pivot_fmt[col].apply(fmt_moeda)
-    st.dataframe(df_pivot_fmt, use_container_width=True)
+    st.dataframe(df_pivot_fmt, width="stretch")
     st.markdown("<br>", unsafe_allow_html=True)
 
     fig_proj = px.bar(df_fat_group, x="Mês Vencimento", y="valor", color="cartao",
@@ -396,7 +396,7 @@ def _sub_faturas_futuras(df_p, df_p2):
                       title="Distribuição Mensal das Faturas Futuras",
                       color_discrete_sequence=px.colors.qualitative.Set2)
     fig_proj.update_layout(barmode="stack", separators=',.')
-    st.plotly_chart(fig_proj, use_container_width=True)
+    st.plotly_chart(fig_proj, width="stretch")
 
     st.markdown("---")
     st.markdown("##### 🔍 Detalhamento de Fatura Específica")
@@ -419,7 +419,7 @@ def _sub_faturas_futuras(df_p, df_p2):
         df_det_show["valor"]      = df_det_show["valor"].apply(fmt_moeda)
         df_det_show["vencimento"] = df_det_show["vencimento"].apply(converter_data_para_exibicao)
         df_det_show.columns = ["Descrição/Item", "Cartão", "Parcela", "Total Parc.", "Valor", "Vencimento"]
-        st.dataframe(df_det_show, use_container_width=True, hide_index=True)
+        st.dataframe(df_det_show, width="stretch", hide_index=True)
 
     with slot_pdf:
         botao_pdf(
@@ -460,7 +460,7 @@ def _sub_lancar_historico():
         venc_init_m = col_m7.date_input("Vencimento da próxima parcela a vencer *",
                                         value=hoje_br(), format="DD/MM/YYYY", key="m_date")
         obs_m      = st.text_input("Observação (opcional)", key="m_obs")
-        sub_manual = st.form_submit_button("✔ Salvar Parcelas Históricas", type="primary", use_container_width=True)
+        sub_manual = st.form_submit_button("✔ Salvar Parcelas Históricas", type="primary", width="stretch")
 
     if sub_manual:
         erros_m = []
@@ -506,7 +506,7 @@ def _sub_configuracoes():
         df_c_show = df_c[["id", "nome", "limite", "dia_fechamento", "dia_vencimento"]].copy()
         df_c_show["limite"] = df_c_show["limite"].apply(fmt_moeda)
         df_c_show.columns   = ["ID", "Nome do Cartão", "Limite de Crédito", "Dia do Fechamento", "Dia do Vencimento"]
-        event_c = st.dataframe(df_c_show, use_container_width=True, hide_index=True,
+        event_c = st.dataframe(df_c_show, width="stretch", hide_index=True,
                                on_select="rerun", selection_mode="single-row",
                                key=f"df_cartoes_config_list_{st.session_state.get('_ver_df_cartoes', 0)}")
 
@@ -541,7 +541,7 @@ def _sub_configuracoes():
                 )
                 if confirmar_c:
                     if st.button("🗑 Excluir cartão", type="primary",
-                                 use_container_width=True, key="btn_del_card"):
+                                 width="stretch", key="btn_del_card"):
                         try:
                             excluir_cartao(id_cartao)
                             # Troca a key da tabela para limpar a seleção guardada
@@ -552,7 +552,7 @@ def _sub_configuracoes():
                             st.error(f"Erro ao excluir cartão: {e}")
                 else:
                     st.button("🗑 Excluir cartão", type="primary",
-                              use_container_width=True, disabled=True, key="btn_del_card_dis")
+                              width="stretch", disabled=True, key="btn_del_card_dis")
         else:
             st.info("💡 Clique em um cartão na tabela acima para liberar as opções de exclusão.")
 
@@ -569,7 +569,7 @@ def _sub_configuracoes():
         nome_nc       = col_nc1.text_input("Nome do Cartão * (ex: Nubank Platinum)")
         fechamento_nc = col_nc3.selectbox("Dia do Fechamento da Fatura *", list(range(1, 32)), index=4,  key="nc_fech")
         vencimento_nc = st.selectbox("Dia do Vencimento da Fatura *", list(range(1, 32)), index=11, key="nc_venc")
-        submit_nc = st.form_submit_button("✔ Cadastrar Novo Cartão", type="primary", use_container_width=True)
+        submit_nc = st.form_submit_button("✔ Cadastrar Novo Cartão", type="primary", width="stretch")
 
     if submit_nc:
         erros_nc = []
@@ -653,7 +653,7 @@ def _sub_fechamentos():
                                     format="DD/MM/YYYY", key="fech_data_vencimento")
         obs_f = st.text_input("Observação (opcional)", key="fech_obs")
 
-        sub_f = st.form_submit_button("✔ Registrar fechamento", type="primary", use_container_width=True)
+        sub_f = st.form_submit_button("✔ Registrar fechamento", type="primary", width="stretch")
 
     if sub_f:
         erros_f = []
@@ -713,14 +713,14 @@ def _sub_fechamentos():
     df_fech_show = df_fech_show[cols]
     df_fech_show.columns = ["ID", "Cartão", "Mês Ref.", "Fechamento", "Vencimento", "Obs"][:len(cols)]
 
-    event_f = st.dataframe(df_fech_show, use_container_width=True, hide_index=True,
+    event_f = st.dataframe(df_fech_show, width="stretch", hide_index=True,
                            on_select="rerun", selection_mode="single-row",
                            key=f"df_fechamentos_list_{st.session_state.get('_ver_df_fechamentos', 0)}")
     rows_f = [i for i in event_f.selection.rows if 0 <= i < len(registros)]
     if rows_f:
         idx_sel = rows_f[0]
         id_f    = int(registros[idx_sel]["id"])
-        if st.button("🗑 Excluir este fechamento", type="primary", use_container_width=True, key="btn_excl_fech"):
+        if st.button("🗑 Excluir este fechamento", type="primary", width="stretch", key="btn_excl_fech"):
             try:
                 excluir_fechamento(id_f)
                 # Troca a key da tabela para limpar a seleção guardada.

@@ -38,7 +38,7 @@ def render():
 
         robs  = st.text_input("Observação (opcional)")
 
-        rsubmit = st.form_submit_button("✔ Salvar receita", type="primary", use_container_width=True)
+        rsubmit = st.form_submit_button("✔ Salvar receita", type="primary", width="stretch")
 
     if rsubmit:
         erros = []

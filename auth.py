@@ -75,7 +75,7 @@ def verificar_autenticacao():
             placeholder="Digite a senha..."
         )
 
-        if st.button("Entrar", use_container_width=True, type="primary"):
+        if st.button("Entrar", width="stretch", type="primary"):
             if not modo_multiusuario and not senha_unica:
                 st.error("APP_PASSWORD não configurada nos secrets.")
                 st.stop()

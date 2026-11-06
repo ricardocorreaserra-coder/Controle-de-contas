@@ -189,7 +189,7 @@ def botao_pdf(rotulo: str, gerar, nome_arquivo: str, key: str) -> None:
         mime="application/pdf",
         key=key,
         on_click="ignore",
-        use_container_width=True,
+        width="stretch",
     )
 
 

@@ -32,7 +32,7 @@ def _sub_panorama(meses_futuros):
     ctrl_col1.caption(f"🕐 Projeções calculadas às {_ts_panorama()} "
                       f"(cache persiste enquanto a sessão estiver aberta).")
     if ctrl_col2.button("🔄 Atualizar projeções", key="btn_atualizar_panorama",
-                        use_container_width=True):
+                        width="stretch"):
         invalidar_cache_panorama()
         st.rerun()
 
@@ -52,7 +52,7 @@ def _sub_panorama(meses_futuros):
                                  "Outras desp.", "Despesas (total)", "Saldo projetado"]].copy()
     for col in ["Receitas", "Cartão", "Recorrentes", "Outras desp.", "Despesas (total)", "Saldo projetado"]:
         df_resumo_show[col] = df_resumo_show[col].apply(fmt_moeda)
-    st.dataframe(df_resumo_show, use_container_width=True, hide_index=True)
+    st.dataframe(df_resumo_show, width="stretch", hide_index=True)
 
     st.caption("Saldo projetado considera fluxo de caixa por vencimento (cartão) e por data de "
                "competência (recorrentes/avulsas/planejamento manual).")
@@ -66,7 +66,7 @@ def _sub_panorama(meses_futuros):
     fig_plan.update_layout(barmode="stack", separators=',.',
                            height=350, legend=dict(orientation="h", y=-0.2),
                            margin=dict(t=10, b=10, l=10, r=10))
-    st.plotly_chart(fig_plan, use_container_width=True)
+    st.plotly_chart(fig_plan, width="stretch")
 
     st.markdown("---")
     st.markdown("##### 🔍 Detalhamento por mês")
@@ -79,7 +79,7 @@ def _sub_panorama(meses_futuros):
         df_mes_det["valor"] = df_mes_det["valor"].apply(fmt_moeda)
         df_mes_det = df_mes_det[["tipo", "origem", "descricao", "categoria", "valor"]]
         df_mes_det.columns = ["Tipo", "Origem", "Descrição", "Categoria", "Valor"]
-        st.dataframe(df_mes_det, use_container_width=True, hide_index=True)
+        st.dataframe(df_mes_det, width="stretch", hide_index=True)
 
     # R-02 · Exportação
     st.markdown("---")
@@ -94,7 +94,7 @@ def _sub_panorama(meses_futuros):
                 data=excel_bytes,
                 file_name=f"{nome_arquivo}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
+                width="stretch",
                 key="btn_export_xlsx",
             )
         except Exception as e:
@@ -107,7 +107,7 @@ def _sub_panorama(meses_futuros):
                 data=csv_bytes,
                 file_name=f"{nome_arquivo}.csv",
                 mime="text/csv",
-                use_container_width=True,
+                width="stretch",
                 key="btn_export_csv",
             )
         except Exception as e:
@@ -177,7 +177,7 @@ def _bloco_edicao_planejamento(registro, meses_futuros) -> None:
             cat_edit = pe3.selectbox("Categoria", opcoes_cat, index=idx_cat)
             obs_edit = pe4.text_input("Observação", value=str(registro.get("observacao", "")))
             salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",
-                                                  use_container_width=True)
+                                                  width="stretch")
 
         if salvar_edicao:
             erros = []
@@ -228,7 +228,7 @@ def _sub_lancamentos_futuros(meses_futuros):
         replicar_pl = st.checkbox("Replicar este lançamento para os 12 meses", key="pl_replicar")
         obs_pl = st.text_input("Observação (opcional)", key="pl_obs")
 
-        sub_pl = st.form_submit_button("✔ Salvar Planejamento", type="primary", use_container_width=True)
+        sub_pl = st.form_submit_button("✔ Salvar Planejamento", type="primary", width="stretch")
 
     if sub_pl:
         erros_pl = []
@@ -284,7 +284,7 @@ def _sub_lancamentos_futuros(meses_futuros):
         f"planejamento_lancamentos_{hoje_br().strftime('%Y%m%d')}.pdf", key="pdf_lanc_futuros",
     )
 
-    event_pl = st.dataframe(df_pl_show, use_container_width=True, hide_index=True,
+    event_pl = st.dataframe(df_pl_show, width="stretch", hide_index=True,
                             on_select="rerun", selection_mode="single-row",
                             key=f"df_planejamento_list_{st.session_state.get('_ver_df_planejamento', 0)}")
     rows_pl = [i for i in event_pl.selection.rows if 0 <= i < len(df_pl_list)]
@@ -297,7 +297,7 @@ def _sub_lancamentos_futuros(meses_futuros):
                                    key=f"confirmar_excl_pl_{id_pl}")
         if confirmar_pl:
             if st.button("🗑 Excluir item de planejamento", type="primary",
-                         use_container_width=True, key="btn_excl_pl"):
+                         width="stretch", key="btn_excl_pl"):
                 try:
                     excluir_planejamento(id_pl)
                     invalidar_cache_panorama()
@@ -309,7 +309,7 @@ def _sub_lancamentos_futuros(meses_futuros):
                     st.error(f"Erro ao excluir: {e}")
         else:
             st.button("🗑 Excluir item de planejamento", type="primary",
-                      use_container_width=True, disabled=True, key="btn_excl_pl_dis")
+                      width="stretch", disabled=True, key="btn_excl_pl_dis")
     else:
         st.info("💡 Clique em um item na tabela acima para editar ou excluir.")
 
@@ -338,14 +338,14 @@ def _sub_recorrentes():
                 lambda x: converter_data_para_exibicao(x) if str(x).strip() else "— ativa —")
             df_d_rec_show.columns = ["ID", "Descrição", "Valor", "Início", "Pagamento", "Categoria", "Fim da Recorrência"]
 
-            event_dr = st.dataframe(df_d_rec_show, use_container_width=True, hide_index=True,
+            event_dr = st.dataframe(df_d_rec_show, width="stretch", hide_index=True,
                                     on_select="rerun", selection_mode="single-row", key="df_desp_recorrentes")
             rows_dr = [i for i in event_dr.selection.rows if 0 <= i < len(df_d_rec_f)]
             if rows_dr:
                 idx_sel = rows_dr[0]
                 id_dr   = int(df_d_rec_f.iloc[idx_sel]["id"])
                 desc_dr = df_d_rec_f.iloc[idx_sel]["descricao"]
-                if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_dr", use_container_width=True):
+                if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_dr", width="stretch"):
                     try:
                         encerrar_recorrencia_despesa(id_dr)
                         invalidar_cache_panorama()
@@ -372,14 +372,14 @@ def _sub_recorrentes():
                 lambda x: converter_data_para_exibicao(x) if str(x).strip() else "— ativa —")
             df_r_rec_show.columns = ["ID", "Descrição", "Valor", "Início", "Categoria", "Fim da Recorrência"]
 
-            event_rr = st.dataframe(df_r_rec_show, use_container_width=True, hide_index=True,
+            event_rr = st.dataframe(df_r_rec_show, width="stretch", hide_index=True,
                                     on_select="rerun", selection_mode="single-row", key="df_rec_recorrentes")
             rows_rr = [i for i in event_rr.selection.rows if 0 <= i < len(df_r_rec_f)]
             if rows_rr:
                 idx_sel = rows_rr[0]
                 id_rr   = int(df_r_rec_f.iloc[idx_sel]["id"])
                 desc_rr = df_r_rec_f.iloc[idx_sel]["descricao"]
-                if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_rr", use_container_width=True):
+                if st.button("⏹ Encerrar recorrência (hoje)", key="btn_encerrar_rr", width="stretch"):
                     try:
                         encerrar_recorrencia_receita(id_rr)
                         invalidar_cache_panorama()
@@ -403,7 +403,7 @@ def _sub_recorrentes():
         qdata = qr3.date_input("Início *", value=hoje_br(), format="DD/MM/YYYY", key="qr_data")
         qcat  = qr4.selectbox("Categoria", [""] + CAT_REC, key="qr_cat")
         qconta = st.selectbox("Conta de entrada *", [""] + CONTAS, key="qr_conta")
-        qsubmit = st.form_submit_button("✔ Cadastrar receita recorrente", type="primary", use_container_width=True)
+        qsubmit = st.form_submit_button("✔ Cadastrar receita recorrente", type="primary", width="stretch")
 
     if qsubmit:
         erros_qr = []

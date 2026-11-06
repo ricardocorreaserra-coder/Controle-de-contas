@@ -77,7 +77,7 @@ def render():
                                     format="DD/MM/YYYY", key=k("rec_fim"))
 
     obs = st.text_input("Observação (opcional)", key=k("obs"))
-    submitted = st.button("✔ Salvar despesa", type="primary", use_container_width=True,
+    submitted = st.button("✔ Salvar despesa", type="primary", width="stretch",
                           key=k("salvar"))
 
     if submitted:

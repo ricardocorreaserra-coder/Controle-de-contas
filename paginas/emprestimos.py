@@ -76,7 +76,7 @@ def _sub_cadastro():
             "Data de vencimento da próxima parcela *", value=hoje_br(), format="DD/MM/YYYY"
         )
 
-        submitted = st.form_submit_button("✔ Salvar Empréstimo", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("✔ Salvar Empréstimo", type="primary", width="stretch")
 
     if submitted:
         erros = []
@@ -144,7 +144,7 @@ def _bloco_edicao(eid: int, registro) -> None:
                 "Data de vencimento da próxima parcela *", value=data_atual, format="DD/MM/YYYY"
             )
             salvar_edicao = st.form_submit_button(
-                "💾 Salvar alterações", type="primary", use_container_width=True
+                "💾 Salvar alterações", type="primary", width="stretch"
             )
 
         if salvar_edicao:
@@ -214,7 +214,7 @@ def _sub_lista():
         f"emprestimos_{hoje_br().strftime('%Y%m%d')}.pdf", key="pdf_emprestimos",
     )
 
-    event = st.dataframe(df_show, use_container_width=True, hide_index=True,
+    event = st.dataframe(df_show, width="stretch", hide_index=True,
                          on_select="rerun", selection_mode="single-row",
                          key=f"df_emprestimos_list_{st.session_state.get('_ver_df_emprestimos', 0)}")
 
@@ -253,7 +253,7 @@ def _sub_lista():
     )
     if confirmar_excl:
         if st.button("🗑 Excluir empréstimo", type="primary",
-                     use_container_width=True, key="btn_excl_emp"):
+                     width="stretch", key="btn_excl_emp"):
             try:
                 excluir_emprestimo(eid)
                 # Troca a key da tabela para limpar a seleção guardada (senão o
@@ -266,7 +266,7 @@ def _sub_lista():
                 st.error(f"Erro ao excluir: {e}")
     else:
         st.button("🗑 Excluir empréstimo", type="primary",
-                  use_container_width=True, disabled=True, key="btn_excl_emp_dis")
+                  width="stretch", disabled=True, key="btn_excl_emp_dis")
 
 
 def render():

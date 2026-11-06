@@ -130,7 +130,7 @@ def render():
         f"despesas_{fmes}.pdf", key="pdf_despesas",
     )
 
-    event_d = st.dataframe(df_show, use_container_width=True, hide_index=True,
+    event_d = st.dataframe(df_show, width="stretch", hide_index=True,
                            on_select="rerun", selection_mode="single-row")
 
     st.markdown("#### Ações")
@@ -178,7 +178,7 @@ def render():
 
                 obs_edit = st.text_input("Observação", value=str(registro.get("observacao", "")))
                 salvar_edicao = st.form_submit_button("💾 Salvar alterações", type="primary",
-                                                       use_container_width=True)
+                                                       width="stretch")
 
             if salvar_edicao:
                 erros_edit = []
@@ -213,7 +213,7 @@ def render():
             key=f"confirmar_excl_desp_{id_excluir}"
         )
         if confirmar_d:
-            if st.button("🗑 Excluir despesa", type="primary", use_container_width=True, key="btn_excl_desp"):
+            if st.button("🗑 Excluir despesa", type="primary", width="stretch", key="btn_excl_desp"):
                 try:
                     excluir_despesa(id_excluir)
                     avisar(f"Despesa #{id_excluir} excluída: {desc_excluir} ({val_excluir})",
@@ -222,7 +222,7 @@ def render():
                 except Exception as e:
                     st.error(f"Erro ao excluir: {e}")
         else:
-            st.button("🗑 Excluir despesa", type="primary", use_container_width=True,
+            st.button("🗑 Excluir despesa", type="primary", width="stretch",
                       disabled=True, key="btn_excl_desp_dis")
     else:
         st.info("💡 Clique em uma linha na tabela acima para liberar as ações de exclusão.")
