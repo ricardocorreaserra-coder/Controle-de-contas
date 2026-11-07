@@ -11,9 +11,18 @@ aceitando a senha única antiga (APP_PASSWORD) e registra os lançamentos
 como feitos por "—". Nenhuma configuração existente quebra.
 """
 
+import hmac
+
 import streamlit as st
 
 USUARIO_PADRAO = "—"
+
+
+def _senhas_iguais(digitada, cadastrada) -> bool:
+    """Compara em TEMPO CONSTANTE (não vaza, pelo tempo de resposta, quantas letras acertou)."""
+    a = ("" if digitada is None else str(digitada)).encode("utf-8")
+    b = ("" if cadastrada is None else str(cadastrada)).encode("utf-8")
+    return hmac.compare_digest(a, b)
 
 
 def autenticar_credenciais(nome_digitado: str, senha_digitada: str,
@@ -29,16 +38,23 @@ def autenticar_credenciais(nome_digitado: str, senha_digitada: str,
       2) Senão, cai no modo antigo: só a senha importa e precisa bater com
          `senha_unica`; o usuário retornado é USUARIO_PADRAO.
 
+    Segurança: a senha é comparada em tempo constante e a conferência passa por TODAS as
+    entradas (sem parar na primeira que bate), então o tempo de resposta não revela quais
+    usuários existem. Senha cadastrada vazia NUNCA autentica (secrets mal preenchidos).
+
     Não usa Streamlit — testável isoladamente.
     """
     if usuarios:
         alvo = (nome_digitado or "").strip().lower()
+        achado = None
         for nome_cadastrado, senha_cadastrada in usuarios.items():
-            if nome_cadastrado.strip().lower() == alvo and senha_digitada == senha_cadastrada:
-                return nome_cadastrado
-        return None
+            senha_ok = _senhas_iguais(senha_digitada, senha_cadastrada)
+            nome_ok = str(nome_cadastrado).strip().lower() == alvo
+            if achado is None and nome_ok and senha_ok and str(senha_cadastrada) != "":
+                achado = nome_cadastrado
+        return achado
 
-    if senha_unica and senha_digitada == senha_unica:
+    if senha_unica and _senhas_iguais(senha_digitada, senha_unica):
         return USUARIO_PADRAO
     return None
 

@@ -13,6 +13,7 @@ from logica.relatorios import gerar_pdf, Secao
 from utils.datas import seletor_mes_ano, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, fmt_numero_campo, kpi_card_html, converter_data_para_exibicao, parse_valor
 from utils.widgets import (
+    mostrar_erro,
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
     avisar, estado_vazio,
 )
@@ -189,7 +190,7 @@ def render():
                             concluir_com_sucesso(f"Receita #{id_sel} atualizada: "
                                                  f"{desc_edit.strip()} — {fmt_moeda(v_edit)}")
                         except Exception as e:
-                            st.error(f"Erro ao atualizar: {e}")
+                            mostrar_erro("atualizar", e)
 
             # ── Exclusão ─────────────────────────────────────────────────
             # Item 2 · Confirmação explícita antes de excluir receita
@@ -204,7 +205,7 @@ def render():
                         avisar(f"Receita #{id_sel} excluída: {desc_sel} ({val_sel})", tipo="excluido")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao excluir: {e}")
+                        mostrar_erro("excluir", e)
             else:
                 st.button("🗑 Excluir receita", type="primary", width="stretch",
                           disabled=True, key="btn_excl_rec_dis")

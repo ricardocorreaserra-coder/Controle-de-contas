@@ -23,7 +23,8 @@ from logica.fechamentos import (
 from logica.relatorios import gerar_pdf, Secao, pdf_faturas_futuras
 from utils.datas import seletor_mes_ano, hoje_str, hoje_br, add_months, fmt_mes_str_pt, data_iso as _data_para_iso
 from utils.formatacao import fmt_moeda, card_html, parse_valor, converter_data_para_exibicao
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf, avisar
+from utils.erros import ErroDeNegocio
+from utils.widgets import mostrar_erro, campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf, avisar
 
 # Cada aba tem a sua chave de confirmação. A tela executa o corpo de TODAS as abas
 # a cada rodada, e a chave genérica é consumida pela primeira aba que a lê (a de
@@ -154,7 +155,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
                 avisar(f"Parcela #{pid_acao} marcada como paga: {desc_p} ({val_p})", chave=_MSG_PARCELAS)
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro: {e}")
+                mostrar_erro("concluir a operação", e)
         if ba3.button("↩ Estornar (Voltar para Pendente)", width="stretch", key="btn_pendente_p"):
             try:
                 atualizar_parcela(pid_acao, "pendente")
@@ -162,7 +163,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
                        chave=_MSG_PARCELAS, tipo="aviso")
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro: {e}")
+                mostrar_erro("concluir a operação", e)
 
         st.markdown("###### ✏️ Corrigir vencimento desta parcela")
         st.caption(
@@ -190,7 +191,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
                        f"{desc_p} ({val_p})", chave=_MSG_PARCELAS)
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao corrigir vencimento: {e}")
+                mostrar_erro("corrigir vencimento", e)
 
         _form_alterar_lancamento(df_filtrado.iloc[idx_sel], pid_acao)
         _form_gerenciar_compra(df_p, pid_acao)
@@ -230,7 +231,7 @@ def _sub_parcelas(df_p, df_p2, hoje):
                        "nada foi baixado.", chave=_MSG_PARCELAS, tipo="aviso")
             st.rerun()
         except Exception as e:
-            st.error(f"Erro ao baixar fatura: {e}")
+            mostrar_erro("baixar fatura", e)
 
 
 def _form_alterar_lancamento(row, pid_acao):
@@ -294,10 +295,10 @@ def _form_alterar_lancamento(row, pid_acao):
                 avisar(f"Lançamento alterado: parcela #{pid_acao} ({n} parcela(s) atualizada(s)).",
                        chave=_MSG_PARCELAS)
                 st.rerun()
-            except ValueError as e:
+            except ErroDeNegocio as e:
                 st.error(str(e))
             except Exception as e:
-                st.error(f"Erro ao alterar lançamento: {e}")
+                mostrar_erro("alterar lançamento", e)
 
 
 def _form_gerenciar_compra(df_p, pid_acao):
@@ -341,10 +342,10 @@ def _form_gerenciar_compra(df_p, pid_acao):
                     f"Total corrigido para {novo_total} parcela(s): {removidas} removida(s), {criadas} criada(s).",
                     chave=_MSG_PARCELAS)
                 st.rerun()
-            except ValueError as e:
+            except ErroDeNegocio as e:
                 st.error(str(e))
             except Exception as e:
-                st.error(f"Erro ao corrigir o total de parcelas: {e}")
+                mostrar_erro("corrigir o total de parcelas", e)
 
         # ── Excluir compra ──
         st.markdown("---")
@@ -362,10 +363,10 @@ def _form_gerenciar_compra(df_p, pid_acao):
                 avisar(f"Compra '{resumo['descricao']}' excluída ({n} parcela(s)).",
                        chave=_MSG_PARCELAS, tipo="excluido")
                 st.rerun()
-            except ValueError as e:
+            except ErroDeNegocio as e:
                 st.error(str(e))
             except Exception as e:
-                st.error(f"Erro ao excluir a compra: {e}")
+                mostrar_erro("excluir a compra", e)
 
 
 def _sub_faturas_futuras(df_p, df_p2):
@@ -490,7 +491,7 @@ def _sub_lancar_historico():
                     concluir_com_sucesso(f"Parcelas históricas do item '{desc_m}' cadastradas com sucesso!",
                                          campo_valor_base_key="m_val")
                 except Exception as e:
-                    st.error(f"Erro ao salvar parcelas: {e}")
+                    mostrar_erro("salvar parcelas", e)
                 finally:
                     st.session_state["salvando_parcela"] = False
 
@@ -549,7 +550,7 @@ def _sub_configuracoes():
                             avisar(f"Cartão '{nome_cartao}' excluído.", chave=_MSG_CARTOES, tipo="excluido")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao excluir cartão: {e}")
+                            mostrar_erro("excluir cartão", e)
                 else:
                     st.button("🗑 Excluir cartão", type="primary",
                               width="stretch", disabled=True, key="btn_del_card_dis")
@@ -588,7 +589,7 @@ def _sub_configuracoes():
                 concluir_com_sucesso(f"Novo cartão cadastrado: {nome_nc.strip()} (limite {fmt_moeda(lim)})",
                                      campo_valor_base_key="nc_limit", chave=_MSG_CARTOES)
             except Exception as e:
-                st.error(f"Erro ao cadastrar cartão: {e}")
+                mostrar_erro("cadastrar cartão", e)
 
 
 def _sugerir_datas_fechamento(dia_fechamento: int, dia_vencimento: int, mes_referencia: str):
@@ -669,7 +670,7 @@ def _sub_fechamentos():
                 avisar(f"Fechamento registrado: {cartao_f}, mês {mes_ref_f}.", chave=_MSG_FECHAMENTOS)
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao registrar fechamento: {e}")
+                mostrar_erro("registrar fechamento", e)
 
     st.markdown("---")
     st.markdown("##### Fechamentos Registrados")
@@ -730,7 +731,7 @@ def _sub_fechamentos():
                        chave=_MSG_FECHAMENTOS, tipo="excluido")
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao excluir: {e}")
+                mostrar_erro("excluir", e)
     else:
         st.info("💡 Clique em um fechamento na tabela acima para excluí-lo.")
 
@@ -787,7 +788,7 @@ def _blocos_cartoes(df_c: pd.DataFrame, df_p2: pd.DataFrame):
     try:
         resumo = resumo_limites_cartoes(df_c, df_p2)
     except Exception as e:
-        st.warning(f"Não foi possível calcular os limites agora: {e}")
+        mostrar_erro("calcular os limites dos cartões", e, nivel="warning")
         return
     cartoes = resumo["cartoes"]
     if not cartoes:

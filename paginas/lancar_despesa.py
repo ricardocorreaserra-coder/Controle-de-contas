@@ -8,7 +8,7 @@ from sheets.loaders import obter_nomes_cartoes
 from logica.despesas import salvar_despesa
 from utils.datas import hoje_br
 from utils.formatacao import parse_valor, fmt_moeda
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
+from utils.widgets import mostrar_erro, campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def render():
@@ -116,6 +116,6 @@ def render():
                     concluir_com_sucesso(f"Despesa lançada: {desc.strip()} — {detalhe}",
                                          campo_valor_base_key="desp_valor")
                 except Exception as e:
-                    st.error(f"Erro ao salvar despesa: {e}")
+                    mostrar_erro("salvar despesa", e)
                 finally:
                     st.session_state["salvando_despesa"] = False

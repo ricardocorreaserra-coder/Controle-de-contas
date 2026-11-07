@@ -5,9 +5,13 @@ concentra padrões de UI usados em várias páginas — hoje, especialmente,
 o campo de valor monetário com máscara de centavos.
 """
 
+import logging
+import uuid
+
 import streamlit as st
 
 from utils.datas import MESES_COMPLETOS, deslocar_mes, hoje_br, seletor_mes_ano
+from utils.erros import ErroDeNegocio
 from utils.formatacao import estado_vazio_html, formatar_input_moeda
 from utils.navegacao import ir_para
 
@@ -249,3 +253,30 @@ def estado_vazio(icone, titulo, frase, botao=None, destino=None, chave="estado_v
             with st.container(horizontal=True, horizontal_alignment="center"):
                 if st.button(botao, key=chave, type="primary", width="content"):
                     ir_para(destino)
+
+
+_LOG = logging.getLogger("controle_contas")
+
+
+def mostrar_erro(acao: str, exc: BaseException, nivel: str = "error") -> str:
+    """
+    Mostra na tela uma falha ao `acao` (ex.: "excluir a despesa") SEM expor o texto técnico.
+
+    • `ErroDeNegocio` → é uma mensagem escrita para a pessoa: aparece como está.
+    • Qualquer outro erro (falha do Google, bug...) → mensagem genérica + um código curto; o
+      detalhe completo (com o traceback) vai para o log do servidor (Manage app → Logs) sob
+      esse mesmo código. Assim erros do Google, que podem trazer IDs e endereços internos,
+      não aparecem para quem está usando o app.
+
+    `nivel`: "error" (padrão) ou "warning". Devolve o texto mostrado.
+    """
+    mostrar = st.warning if nivel == "warning" else st.error
+    if isinstance(exc, ErroDeNegocio):
+        texto = str(exc)
+    else:
+        codigo = uuid.uuid4().hex[:8]
+        _LOG.error("[%s] Falha ao %s: %r", codigo, acao, exc, exc_info=exc)
+        texto = (f"Não foi possível {acao}. Tente de novo; se continuar, "
+                 f"avise o administrador informando o código {codigo}.")
+    mostrar(texto)
+    return texto

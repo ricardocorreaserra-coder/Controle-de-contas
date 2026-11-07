@@ -19,7 +19,7 @@ from logica.exportacao import gerar_excel_panorama, gerar_csv_panorama
 from logica.relatorios import gerar_pdf, Secao
 from utils.datas import proximos_12_meses, fmt_mes_str_pt, hoje_br
 from utils.formatacao import fmt_moeda, fmt_numero_campo, parse_valor, converter_data_para_exibicao
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf, avisar
+from utils.widgets import mostrar_erro, campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, botao_pdf, avisar
 
 # A aba "Recorrentes" tem chave própria de confirmação: a chave genérica é lida
 # antes, na aba "Lançamentos Futuros", e a mensagem apareceria na aba errada.
@@ -98,7 +98,7 @@ def _sub_panorama(meses_futuros):
                 key="btn_export_xlsx",
             )
         except Exception as e:
-            st.error(f"Erro ao gerar Excel: {e}")
+            mostrar_erro("gerar Excel", e)
     with exp_col2:
         try:
             csv_bytes = gerar_csv_panorama(df_linhas, df_resumo)
@@ -111,7 +111,7 @@ def _sub_panorama(meses_futuros):
                 key="btn_export_csv",
             )
         except Exception as e:
-            st.error(f"Erro ao gerar CSV: {e}")
+            mostrar_erro("gerar CSV", e)
     with exp_col3:
         secoes_pdf = [Secao("Resumo mês a mês", df_resumo_show.copy())]
         if not df_mes_det.empty:
@@ -201,7 +201,7 @@ def _bloco_edicao_planejamento(registro, meses_futuros) -> None:
                     concluir_com_sucesso(f"Item de planejamento #{id_pl} atualizado: {desc_edit.strip()}",
                                          campo_valor_base_key=f"pl_edit_valor_{id_pl}")
                 except Exception as e:
-                    st.error(f"Erro ao atualizar: {e}")
+                    mostrar_erro("atualizar", e)
 
 
 def _sub_lancamentos_futuros(meses_futuros):
@@ -255,7 +255,7 @@ def _sub_lancamentos_futuros(meses_futuros):
                 invalidar_cache_panorama()
                 concluir_com_sucesso(msg, campo_valor_base_key="pl_valor")
             except Exception as e:
-                st.error(f"Erro ao salvar planejamento: {e}")
+                mostrar_erro("salvar planejamento", e)
 
     st.markdown("---")
     st.markdown("##### Itens de Planejamento Cadastrados")
@@ -306,7 +306,7 @@ def _sub_lancamentos_futuros(meses_futuros):
                     avisar(f"Item de planejamento #{id_pl} excluído: {desc_pl_sel}", tipo="excluido")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao excluir: {e}")
+                    mostrar_erro("excluir", e)
         else:
             st.button("🗑 Excluir item de planejamento", type="primary",
                       width="stretch", disabled=True, key="btn_excl_pl_dis")
@@ -353,7 +353,7 @@ def _sub_recorrentes():
                                chave=_CHAVE_MSG_RECORRENTES)
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro: {e}")
+                        mostrar_erro("concluir a operação", e)
 
     st.markdown("---")
     st.markdown("##### Receitas recorrentes")
@@ -387,7 +387,7 @@ def _sub_recorrentes():
                                chave=_CHAVE_MSG_RECORRENTES)
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro: {e}")
+                        mostrar_erro("concluir a operação", e)
 
     st.markdown("---")
     st.markdown("##### Cadastro rápido de receita recorrente")
@@ -426,7 +426,7 @@ def _sub_recorrentes():
                 concluir_com_sucesso(f"Receita recorrente cadastrada: {qdesc.strip()} — {fmt_moeda(qv)}",
                                      campo_valor_base_key="qr_valor", chave=_CHAVE_MSG_RECORRENTES)
             except Exception as e:
-                st.error(f"Erro ao cadastrar: {e}")
+                mostrar_erro("cadastrar", e)
 
 
 def render():

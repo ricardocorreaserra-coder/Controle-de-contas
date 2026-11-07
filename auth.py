@@ -21,14 +21,19 @@ import time
 
 import streamlit as st
 
+from utils.limite_login import LimiteLogin, texto_espera
 from utils.sessao import autenticar_credenciais, _ler_usuarios_dos_secrets
+
+
+@st.cache_resource
+def _limitador() -> LimiteLogin:
+    """Um único limitador para o servidor inteiro (todas as sessões compartilham)."""
+    return LimiteLogin()
 
 
 def verificar_autenticacao():
     if "autenticado" not in st.session_state:
         st.session_state["autenticado"] = False
-    if "tentativas_login" not in st.session_state:
-        st.session_state["tentativas_login"] = 0
 
     if st.session_state["autenticado"]:
         return
@@ -40,8 +45,10 @@ def verificar_autenticacao():
     instrucao = ("Entre com seu usuário e senha" if modo_multiusuario
                  else "Digite a senha para acessar")
 
-    # B-01 · Limite simples de tentativas para dificultar força bruta
-    bloqueado = st.session_state["tentativas_login"] >= 5
+    # B-01 · Limite de tentativas COMPARTILHADO entre todas as sessões (utils/limite_login.py):
+    # abrir outra aba ou apertar F5 não zera o contador.
+    limite = _limitador()
+    espera_geral = limite.bloqueio_global()
 
     # Layout: UM único cartão com borda (st.container(border=True)) contendo
     # título, instrução e campos, centralizado na página. Antes o título ficava
@@ -60,8 +67,9 @@ def verificar_autenticacao():
         </div>
         """, unsafe_allow_html=True)
 
-        if bloqueado:
-            st.error("Muitas tentativas incorretas. Recarregue a página para tentar novamente.")
+        if espera_geral:
+            st.error("Muitas tentativas incorretas no aplicativo. "
+                     f"Tente novamente em {texto_espera(espera_geral)}.")
             st.stop()
 
         nome = ""
@@ -80,22 +88,32 @@ def verificar_autenticacao():
                 st.error("APP_PASSWORD não configurada nos secrets.")
                 st.stop()
 
+            # O bloqueio é por nome digitado (existente ou não, para não revelar quem existe).
+            chave = nome if modo_multiusuario else ""
+            espera = limite.segundos_bloqueado(chave)
+            if espera:
+                # Bloqueado: nem confere a senha (a senha certa também fica de fora).
+                st.error("Muitas tentativas incorretas. "
+                         f"Tente novamente em {texto_espera(espera)}.")
+                st.stop()
+
             usuario_ok = autenticar_credenciais(nome, senha, usuarios, senha_unica)
             if usuario_ok:
+                limite.registrar_sucesso(chave)
                 st.session_state["autenticado"] = True
                 st.session_state["usuario"] = usuario_ok
-                st.session_state["tentativas_login"] = 0
                 st.rerun()
             else:
-                # B-01 · Atraso proposital a cada tentativa falha. Isso não
-                # depende do contador em session_state (que um F5 zera) —
-                # desacelera qualquer tentativa automatizada de força bruta
-                # mesmo que a pessoa recarregue a página entre uma tentativa
-                # e outra.
+                # Atraso proposital a cada falha (desacelera tentativas automatizadas) +
+                # registro no limitador compartilhado.
+                limite.registrar_falha(chave)
                 time.sleep(2)
-                st.session_state["tentativas_login"] += 1
-                restantes = 5 - st.session_state["tentativas_login"]
-                erro = ("Usuário ou senha incorretos." if modo_multiusuario
-                        else "Senha incorreta.")
-                st.error(f"{erro} Tentativas restantes: {max(restantes, 0)}.")
+                espera = limite.segundos_bloqueado(chave)
+                if espera:
+                    st.error("Muitas tentativas incorretas. "
+                             f"Tente novamente em {texto_espera(espera)}.")
+                else:
+                    erro = ("Usuário ou senha incorretos." if modo_multiusuario
+                            else "Senha incorreta.")
+                    st.error(f"{erro} Tentativas restantes: {limite.falhas_restantes(chave)}.")
     st.stop()

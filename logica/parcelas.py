@@ -14,6 +14,7 @@ from config import DIA_VENCIMENTO_PADRAO
 from sheets.client import get_sheet, sheet_to_df, append_linhas_por_nome_ids_unicos, delete_rows_batch
 from sheets.loaders import carregar_cartoes, carregar_parcelas
 from utils.datas import add_months, data_iso as _data_iso
+from utils.erros import ErroDeNegocio
 
 
 def valores_parcelas(valor_total: float, n_parc: int) -> list:
@@ -150,10 +151,10 @@ def _localizar_compra_manual(ws, pid):
     df = sheet_to_df(ws)
     alvo = df[df["id"].astype(str) == str(pid)] if not df.empty else df
     if alvo.empty:
-        raise ValueError("Parcela não encontrada (ela pode ter sido excluída).")
+        raise ErroDeNegocio("Parcela não encontrada (ela pode ter sido excluída).")
     idx_ref = alvo.index[0]
     if str(df.loc[idx_ref, "despesa_id"]).strip() != "-1":
-        raise ValueError(
+        raise ErroDeNegocio(
             "Esta parcela veio de uma despesa. Altere ou exclua a despesa na aba Despesas."
         )
     return df, idx_ref, _indices_da_compra(df, idx_ref)
@@ -182,7 +183,7 @@ def corrigir_total_parcelas(pid, novo_total):
     """
     novo_total = int(novo_total)
     if not (1 <= novo_total <= 48):
-        raise ValueError("O total de parcelas deve estar entre 1 e 48.")
+        raise ErroDeNegocio("O total de parcelas deve estar entre 1 e 48.")
 
     ws = get_sheet("parcelas")
     df, idx_ref, idxs = _localizar_compra_manual(ws, pid)
@@ -191,13 +192,13 @@ def corrigir_total_parcelas(pid, novo_total):
     num_min, num_max = int(g["_n"].min()), int(g["_n"].max())
 
     if novo_total < num_min:
-        raise ValueError(
+        raise ErroDeNegocio(
             f"O total não pode ser menor que a primeira parcela lançada (nº {num_min}). "
             "Para remover a compra toda, use a exclusão."
         )
     remover = g[g["_n"] > novo_total]
     if (remover["status"] == "pago").any():
-        raise ValueError(
+        raise ErroDeNegocio(
             "Há parcela(s) paga(s) entre as que seriam removidas. Estorne-as para pendente antes de reduzir o total."
         )
     manter = g[g["_n"] <= novo_total]
@@ -265,11 +266,11 @@ def alterar_lancamento_parcela(pid, valor=None, descricao=None, cartao=None,
         _garantir_coluna(ws, "data_compra")
     df = sheet_to_df(ws)
     if df.empty:
-        raise ValueError("Nenhuma parcela encontrada.")
+        raise ErroDeNegocio("Nenhuma parcela encontrada.")
 
     alvo = df[df["id"].astype(str) == str(pid)]
     if alvo.empty:
-        raise ValueError("Parcela não encontrada (ela pode ter sido excluída).")
+        raise ErroDeNegocio("Parcela não encontrada (ela pode ter sido excluída).")
     ref = alvo.iloc[0]
     idx_ref = alvo.index[0]
     manual = str(ref["despesa_id"]).strip() == "-1"
@@ -279,14 +280,14 @@ def alterar_lancamento_parcela(pid, valor=None, descricao=None, cartao=None,
 
     # ── Validações ──
     if valor is not None and not (0 < float(valor) <= 1_000_000):
-        raise ValueError("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
+        raise ErroDeNegocio("Valor deve estar entre R$ 0,01 e R$ 1.000.000,00.")
     if manual and descricao is not None and not str(descricao).strip():
-        raise ValueError("A descrição não pode ficar vazia.")
+        raise ErroDeNegocio("A descrição não pode ficar vazia.")
     if manual and data_compra:
         escopo_idx_v = grupo.index if escopo == "compra" else [idx_ref]
         menor_venc = min(_data_iso(df.loc[i, "vencimento"]) for i in escopo_idx_v)
         if str(data_compra) > menor_venc:
-            raise ValueError("A data da compra não pode ser posterior ao vencimento da parcela.")
+            raise ErroDeNegocio("A data da compra não pode ser posterior ao vencimento da parcela.")
 
     # ── Quais linhas recebem cada campo ──
     mudancas = {}  # {índice_df: {coluna: valor_novo}}

@@ -29,6 +29,7 @@ from logica.relatorios import gerar_pdf, Secao
 from utils.datas import data_iso, hoje_br
 from utils.formatacao import fmt_moeda, fmt_numero_campo, kpi_card_html, parse_valor, converter_data_para_exibicao
 from utils.widgets import (
+    mostrar_erro,
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, limpar_campo_valor, avisar,
     botao_pdf, estado_vazio,
 )
@@ -103,7 +104,7 @@ def _sub_cadastro():
                     campo_valor_base_key="emp_valor_parcela",
                 )
             except Exception as e:
-                st.error(f"Erro ao salvar empréstimo: {e}")
+                mostrar_erro("salvar empréstimo", e)
 
 
 def _bloco_edicao(eid: int, registro) -> None:
@@ -170,7 +171,7 @@ def _bloco_edicao(eid: int, registro) -> None:
                            chave=_CHAVE_MSG_EDICAO)
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao atualizar: {e}")
+                    mostrar_erro("atualizar", e)
 
 
 def _sub_lista():
@@ -263,7 +264,7 @@ def _sub_lista():
                        chave=_CHAVE_MSG_EDICAO, tipo="excluido")
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro ao excluir: {e}")
+                mostrar_erro("excluir", e)
     else:
         st.button("🗑 Excluir empréstimo", type="primary",
                   width="stretch", disabled=True, key="btn_excl_emp_dis")

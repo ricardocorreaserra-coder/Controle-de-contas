@@ -18,6 +18,7 @@ from utils.formatacao import (
     fmt_moeda, fmt_numero_campo, fmt_percentual, kpi_card_html, converter_data_para_exibicao, parse_valor,
 )
 from utils.widgets import (
+    mostrar_erro,
     campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente, opcoes_categoria, botao_pdf,
     avisar, estado_vazio,
 )
@@ -67,7 +68,7 @@ def render():
                                f"{p['descricao']} — {fmt_moeda(p['valor'])}")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao marcar como paga: {e}")
+                        mostrar_erro("marcar como paga", e)
             st.markdown("<br>", unsafe_allow_html=True)
 
     mask = df_d["data"].astype(str).str.startswith(fmes)
@@ -202,7 +203,7 @@ def render():
                         concluir_com_sucesso(f"Despesa #{id_excluir} atualizada: "
                                              f"{desc_edit.strip()} — {fmt_moeda(v_edit)}")
                     except Exception as e:
-                        st.error(f"Erro ao atualizar: {e}")
+                        mostrar_erro("atualizar", e)
 
         # ── Exclusão ─────────────────────────────────────────────────────
         st.caption("Esta ação também excluirá todas as parcelas vinculadas a esta despesa.")
@@ -220,7 +221,7 @@ def render():
                            tipo="excluido")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao excluir: {e}")
+                    mostrar_erro("excluir", e)
         else:
             st.button("🗑 Excluir despesa", type="primary", width="stretch",
                       disabled=True, key="btn_excl_desp_dis")

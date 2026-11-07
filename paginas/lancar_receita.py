@@ -7,7 +7,7 @@ from config import CAT_REC, CONTAS
 from logica.receitas import salvar_receita
 from utils.datas import hoje_br
 from utils.formatacao import parse_valor, fmt_moeda
-from utils.widgets import campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
+from utils.widgets import mostrar_erro, campo_valor_moeda, concluir_com_sucesso, exibir_mensagem_pendente
 
 
 def render():
@@ -67,6 +67,6 @@ def render():
                     concluir_com_sucesso(f"Receita lançada: {rdesc.strip()} — {fmt_moeda(rv)} ({rconta})",
                                          campo_valor_base_key="rec_valor")
                 except Exception as e:
-                    st.error(f"Erro ao salvar receita: {e}")
+                    mostrar_erro("salvar receita", e)
                 finally:
                     st.session_state["salvando_receita"] = False
