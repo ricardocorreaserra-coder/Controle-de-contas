@@ -11,25 +11,148 @@ decorator em outro lugar. Isso garante que `.clear()` chamado a partir de
 qualquer módulo realmente invalide o mesmo cache compartilhado.
 """
 
+import logging
+
 import pandas as pd
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-from config import SCOPES, EXPECTED_HEADERS
+from config import SCOPES, SCOPES_AMPLOS, EXPECTED_HEADERS
+
+_LOG = logging.getLogger("controle_contas")
 
 
 @st.cache_resource(ttl=600)
 def get_sheets_client():
+    """Cliente com as permissões MÍNIMAS (config.SCOPES)."""
     creds_dict = st.secrets["gcp_service_account"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
 
 @st.cache_resource(ttl=600)
+def get_sheets_client_amplo():
+    """Cliente com o escopo antigo (config.SCOPES_AMPLOS). Só é criado se o Google recusar o mínimo."""
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES_AMPLOS)
+    return gspread.authorize(creds)
+
+
+def _erro_de_escopo(exc: BaseException) -> bool:
+    """True se o Google recusou por FALTA DE PERMISSÃO DO TOKEN (escopo), e não por outro motivo."""
+    codigo = getattr(exc, "code", None)
+    if codigo is None:
+        codigo = getattr(getattr(exc, "response", None), "status_code", None)
+    texto = str(exc).lower()
+    return codigo == 403 and ("scope" in texto or "insufficient" in texto)
+
+
+def _abrir_planilha(nome, cliente_minimo, obter_cliente_amplo):
+    """
+    Abre a planilha pelo nome com o cliente de permissões mínimas. Se o Google recusar por
+    escopo insuficiente, tenta UMA vez com o cliente amplo (o app nunca fica fora do ar por
+    causa da redução de permissões) e registra um aviso no log. Qualquer outro erro sobe igual.
+    """
+    try:
+        return cliente_minimo.open(nome)
+    except gspread.exceptions.APIError as e:
+        if not _erro_de_escopo(e):
+            raise
+        _LOG.warning("O Google recusou o escopo mínimo ao abrir a planilha; usando o escopo amplo "
+                     "(drive). Detalhe: %r", e)
+        return obter_cliente_amplo().open(nome)
+
+
+@st.cache_resource(ttl=600)
 def get_workbook():
-    client = get_sheets_client()
-    return client.open(st.secrets["SHEET_NAME"])
+    return _abrir_planilha(st.secrets["SHEET_NAME"], get_sheets_client(), get_sheets_client_amplo)
+
+
+# ── Diagnóstico: mais de uma planilha com o mesmo nome? ─────────────────────────────────
+# O app abre a planilha pelo NOME (SHEET_NAME). Se a conta de serviço enxergar duas com o
+# mesmo nome, o Google devolve uma delas e a escolha pode mudar sozinha. Isto só OLHA (lê
+# metadados dos arquivos) e avisa; não altera nada e não escolhe por você.
+
+def _data_br(rfc3339) -> str:
+    """'2026-06-13T14:22:10.123Z' -> '13/06/2026' ('?' se não der para ler)."""
+    t = str(rfc3339 or "")[:10]
+    try:
+        ano, mes, dia = t.split("-")
+        return f"{int(dia):02d}/{int(mes):02d}/{int(ano):04d}"
+    except ValueError:
+        return "?"
+
+
+def analisar_planilhas_homonimas(arquivos, nome, id_em_uso="") -> dict:
+    """
+    `arquivos`: lista de dicts do Drive (id, name, createdTime, modifiedTime).
+    Considera só as de nome IGUAL a `nome` (a mesma regra do `gspread.open`).
+    Devolve {"ambigua": bool, "itens": [{"id", "criada", "alterada", "em_uso"}...]},
+    com a mais recentemente alterada primeiro.
+    """
+    iguais = [a for a in (arquivos or []) if isinstance(a, dict) and a.get("name") == nome and a.get("id")]
+    iguais.sort(key=lambda a: str(a.get("modifiedTime") or ""), reverse=True)
+    itens = [{
+        "id": str(a["id"]),
+        "criada": _data_br(a.get("createdTime")),
+        "alterada": _data_br(a.get("modifiedTime")),
+        "em_uso": str(a["id"]) == str(id_em_uso),
+    } for a in iguais]
+    return {"ambigua": len(itens) > 1, "itens": itens}
+
+
+def _md_texto(texto) -> str:
+    """Escapa o texto para o markdown do Streamlit."""
+    t = str(texto)
+    for ch in ("\\", "$", "*", "_", "`", "[", "]", "~", ":", "<", ">"):
+        t = t.replace(ch, "\\" + ch)
+    return t
+
+
+def texto_aviso_planilhas(diag: dict, nome: str) -> str:
+    """Texto (markdown) do aviso mostrado no app quando há planilhas com o mesmo nome."""
+    linhas = [
+        f"**Atenção:** há {len(diag['itens'])} planilhas chamadas “{_md_texto(nome)}” compartilhadas com o app. "
+        "Ele usa **uma só** e a escolha pode mudar sozinha, o que faria os dados parecerem sumir. "
+        "Abra cada uma abaixo e **renomeie ou deixe de compartilhar** as que não são a certa."
+    ]
+    for it in diag["itens"]:
+        marca = " ← **em uso agora**" if it["em_uso"] else ""
+        linhas.append(
+            f"- [Abrir planilha](https://docs.google.com/spreadsheets/d/{it['id']}) · "
+            f"criada em {it['criada']} · última alteração em {it['alterada']}{marca}"
+        )
+    return "\n".join(linhas)
+
+
+def _listar_planilhas(nome):
+    """Lista as planilhas de nome `nome`; mesmo plano B do `_abrir_planilha` se o escopo for recusado
+    (senão o diagnóstico ficaria calado justamente quando a permissão reduzida não valeu)."""
+    try:
+        return get_sheets_client().list_spreadsheet_files(title=nome)
+    except gspread.exceptions.APIError as e:
+        if not _erro_de_escopo(e):
+            raise
+        return get_sheets_client_amplo().list_spreadsheet_files(title=nome)
+
+
+@st.cache_data(ttl=600)
+def diagnostico_planilha() -> dict:
+    """
+    Resultado cacheado por 10 min. NUNCA levanta erro (o diagnóstico não pode derrubar o app):
+    se algo falhar, devolve "sem aviso" e registra no log.
+    """
+    vazio = {"ambigua": False, "itens": [], "nome": ""}
+    try:
+        nome = st.secrets["SHEET_NAME"]
+        arquivos = _listar_planilhas(nome)
+        resultado = analisar_planilhas_homonimas(arquivos, nome, get_workbook().id)
+        resultado["nome"] = nome
+        return resultado
+    except Exception as e:
+        _LOG.warning("Diagnóstico de planilhas não pôde ser feito: %r", e)
+        return vazio
 
 
 def _migrar_headers_se_preciso(ws, nome: str):

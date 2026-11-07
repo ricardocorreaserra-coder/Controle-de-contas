@@ -36,7 +36,19 @@ SEM_CONTA    = "Sem conta"
 DIA_VENCIMENTO_PADRAO = 10  # usado apenas se um cartão referenciado não for encontrado no cadastro
 
 # ── Google Sheets ──────────────────────────────────────────────────────────────
+# Permissões da conta de serviço (princípio do menor privilégio):
+#   • spreadsheets          → ler e gravar nas planilhas (tudo o que o app faz com os dados);
+#   • drive.metadata.readonly → só ENCONTRAR a planilha pelo nome (SHEET_NAME); não lê o conteúdo
+#     de arquivos do Drive, não apaga, não muda compartilhamento.
+# Se a chave da conta vazar, quem a tiver NÃO consegue apagar o arquivo da planilha nem
+# compartilhá-lo (antes, com o escopo "drive" completo, conseguia).
 SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+]
+# Plano B: o escopo antigo, usado automaticamente só se o Google recusar o mínimo ao abrir a planilha
+# (ver sheets/client.py::_abrir_planilha). O aviso aparece no log do servidor.
+SCOPES_AMPLOS = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]

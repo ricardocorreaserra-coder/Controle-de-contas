@@ -12,6 +12,7 @@ import streamlit as st
 
 from config import CSS
 from auth import verificar_autenticacao
+from sheets.client import diagnostico_planilha, texto_aviso_planilhas
 from utils.navegacao import registrar_paginas
 from utils.sessao import usuario_atual, USUARIO_PADRAO
 from utils.widgets import exibir_toasts_pendentes
@@ -81,6 +82,11 @@ _PAGINAS = [
     (planejamento_12_meses, "Planejar", "🔮", "planejamento"),
     (emprestimos, "Empréstimos", "🏛️", "emprestimos"),
 ]
+
+# Aviso (só aparece se houver) quando mais de uma planilha tem o nome configurado — ver sheets/client.py.
+_diag_planilha = diagnostico_planilha()
+if _diag_planilha["ambigua"]:
+    st.warning(texto_aviso_planilhas(_diag_planilha, _diag_planilha["nome"]), icon="⚠️")
 
 _objetos_paginas = {
     caminho: st.Page(modulo.render, title=titulo, icon=icone, url_path=caminho,

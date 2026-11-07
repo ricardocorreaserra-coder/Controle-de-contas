@@ -18,9 +18,9 @@
     }
   },
   "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; pip3 install --user streamlit; echo '✅ Packages installed and Requirements met'",
-  "postAttachCommand": {
-    "server": "streamlit run app.py --server.enableCORS false --server.enableXsrfProtection false"
-  },
+  // Segurança: NÃO inicia o app sozinho e NÃO desliga as proteções (XSRF e CORS) do Streamlit.
+  // Se um dia usar o Codespaces, rode no terminal:  streamlit run app.py
+  // (este arquivo não afeta o site no Streamlit Community Cloud).
   "portsAttributes": {
     "8501": {
       "label": "Application",
